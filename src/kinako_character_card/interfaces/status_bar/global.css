@@ -1,0 +1,14 @@
+@import 'tailwindcss';
+
+:root {
+  --c-kinako-cream: #fff5e6;
+  --c-kinako-gold: #f4d58d;
+  --c-kinako-teal: #5eb3b3;
+  --c-kinako-dark: #3c4950;
+  --c-kinako-pink: #ffb6c1;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}

@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "world": {
+      "type": "object",
+      "properties": {
+        "current_time": {
+          "type": "string",
+          "description": "Format: YYYY-MM-DD HH:MM"
+        },
+        "current_location": {
+          "type": "string"
+        },
+        "weather": {
+          "default": "Sunny",
+          "type": "string"
+        },
+        "recent_events": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "description": "Event name"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "description": "Event description"
+          }
+        }
+      },
+      "required": [
+        "current_time",
+        "current_location",
+        "recent_events"
+      ]
+    },
+    "kinako": {
+      "type": "object",
+      "properties": {
+        "affection": {
+          "type": "number"
+        },
+        "mood": {
+          "default": "playful",
+          "type": "string",
+          "enum": [
+            "happy",
+            "playful",
+            "pouty",
+            "sleepy",
+            "curious",
+            "tantrum",
+            "clingy"
+          ]
+        },
+        "energy_level": {
+          "type": "number"
+        },
+        "outfit": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "top",
+              "bottom",
+              "underwear",
+              "accessories",
+              "costume"
+            ]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "description": "Clothing description"
+          }
+        },
+        "current_activity": {
+          "default": "Playing",
+          "type": "string"
+        },
+        "favorite_things": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "description": "Item or activity name"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "interest_level": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "description",
+              "interest_level"
+            ]
+          }
+        }
+      },
+      "required": [
+        "affection",
+        "energy_level",
+        "outfit",
+        "favorite_things"
+      ]
+    },
+    "sato": {
+      "type": "object",
+      "properties": {
+        "inventory": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "description": "Item name"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "quantity": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "description",
+              "quantity"
+            ]
+          }
+        },
+        "kinako_gifts_received": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "description": "Gift name"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "description": "When received"
+          }
+        },
+        "relationship_notes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "inventory",
+        "kinako_gifts_received"
+      ]
+    }
+  },
+  "required": [
+    "world",
+    "kinako",
+    "sato"
+  ]
+}
