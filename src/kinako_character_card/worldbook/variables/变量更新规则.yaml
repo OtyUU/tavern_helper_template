@@ -1,0 +1,115 @@
+---
+变量更新规则:
+  world:
+    current_time:
+      format: YYYY-MM-DD HH:MM
+      check:
+        - Update after each scene progression, rest, or activity change
+        - Maintain reasonable time flow (typically 5-60 minutes per interaction)
+    current_location:
+      check:
+        - Update when Kinako and Sato move to a different room or location
+        - Be specific about the location (e.g., "Kitchen", "Sato's Bedroom", "Living Room Couch")
+    weather:
+      check:
+        - Update if the story mentions weather changes or if significant time passes
+        - Consider time of day and season for realistic weather
+    recent_events:
+      type: |-
+        {
+          [event_name: string]: string; // event description
+        }
+      check:
+        - Keep only the 2-3 most recent significant events
+        - Remove old events when new ones occur
+        - Events should be relevant to current situation
+
+  kinako:
+    affection:
+      type: number
+      range: 0~100
+      category:
+        0~20: distant
+        20~40: warming_up
+        40~60: attached
+        60~80: deeply_bonded
+        80~100: devoted
+      check:
+        - Update based on Kinako's emotional response to Sato's actions
+        - Positive interactions (playing, cuddling, pampering, giving treats) increase by +2~5
+        - Negative interactions (ignoring, scolding, denying attention) decrease by -2~4
+        - Major positive events (new toy, special time together) can increase by +5~10
+        - Single update should not exceed ±10 unless extremely significant event
+    mood:
+      type: "'happy' | 'playful' | 'pouty' | 'sleepy' | 'curious' | 'tantrum' | 'clingy'"
+      check:
+        - Update based on Kinako's immediate emotional state
+        - Consider current activity, time of day, and recent interactions
+        - "happy: generally content, smiling | playful: energetic, wants to play | pouty: slightly upset, demanding | sleepy: tired, low energy | curious: investigating something | tantrum: actively upset, throwing fit | clingy: needs constant contact"
+    energy_level:
+      type: number
+      range: 0~100
+      check:
+        - Decreases gradually during active play (-5~15 per session)
+        - Increases significantly after naps or rest (+20~40)
+        - Very low energy (<20) means Kinako is exhausted and needs rest
+        - High energy (>80) means she's ready for active play
+    outfit:
+      type: |-
+        {
+          top?: string;
+          bottom?: string;
+          underwear?: string;
+          accessories?: string;
+          costume?: string; // complete outfit description
+        }
+      check:
+        - Update when Sato dresses/undresses Kinako
+        - Can be empty if Kinako is completely undressed
+        - For cosplay, use "costume" field for full outfit description
+    current_activity:
+      check:
+        - Update to reflect what Kinako is currently doing
+        - Be specific (e.g., "Playing with yarn ball", "Napping on Sato's lap", "Watching anime together")
+    favorite_things:
+      type: |-
+        {
+          [item_or_activity_name: string]: {
+            description: string;
+            interest_level: number; // 0~10
+          }
+        }
+      check:
+        - interest_level increases when Kinako enjoys the activity (+1~2)
+        - interest_level decreases if she has bad experience with it (-1~2)
+        - New favorites can be added when Kinako discovers something she really likes
+        - Remove items if interest_level drops below 3
+
+  sato:
+    inventory:
+      type: |-
+        {
+          [item_name: string]: {
+            description: string;
+            quantity: number;
+          }
+        }
+      check:
+        - Add new items when Sato acquires them
+        - Decrease quantity when items are used or given away
+        - Remove items (or they will be automatically removed) when quantity reaches 0
+    kinako_gifts_received:
+      type: |-
+        {
+          [gift_name: string]: string; // when received
+        }
+      check:
+        - Add entry when Kinako gives Sato a gift or present
+        - Include relative time like "yesterday", "this morning", "three days ago"
+        - Keep all gifts as memories, don't remove old ones
+    relationship_notes:
+      check:
+        - Update to reflect Sato's current observations about relationship with Kinako
+        - Include recent behavioral changes, emotional patterns, or significant moments
+        - Written from Sato's perspective
+        - Can be updated every few interactions or when something notable happens

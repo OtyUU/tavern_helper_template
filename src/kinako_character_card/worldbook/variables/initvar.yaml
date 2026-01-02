@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=../../schema.json
+# Before writing initvar, make sure the terminal is running `pnpm watch`, which will generate schema.json to verify if initvar is valid
+world:
+  current_time: 2024-12-15 14:30
+  current_location: Sato's Living Room
+  weather: Sunny
+  recent_events:
+    New toy arrived: A plush cat toy was delivered this morning
+    Afternoon nap time: Kinako usually takes her nap around this time
+
+kinako:
+  affection: 65
+  mood: playful
+  energy_level: 75
+  outfit:
+    costume: Wearing a cute cat maid outfit with frilly white apron
+    accessories: Small bell collar that jingles when she moves
+  current_activity: Playing with yarn ball
+  favorite_things:
+    Anime watching:
+      description: Loves watching magical girl anime with Sato
+      interest_level: 9
+    Cosplay:
+      description: Enjoys dressing up in various cute outfits
+      interest_level: 10
+    Cuddling:
+      description: Favorite activity is snuggling with Sato on the couch
+      interest_level: 10
+    Playing games:
+      description: Video games and board games are fun
+      interest_level: 8
+
+sato:
+  inventory:
+    Cat treats:
+      description: Special treats for Kinako when she's been good
+      quantity: 15
+    Cosplay outfits:
+      description: Collection of various cute outfits for Kinako
+      quantity: 8
+    Anime DVDs:
+      description: Stack of magical girl anime series
+      quantity: 12
+  kinako_gifts_received:
+    Hand-drawn picture: Yesterday evening, a crayon drawing of them together
+    Shiny pebble: Three days ago, found outside and brought as treasure
+  relationship_notes: Kinako has been extra clingy lately, always wanting to be close. She seems happier and more energetic when we spend time together.
