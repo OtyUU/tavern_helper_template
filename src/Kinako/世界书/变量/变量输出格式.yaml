@@ -1,5 +1,5 @@
 ---
-变量输出格式:
+variable_output_format:
   rule:
     - you must output the update analysis and the actual update commands at once in the end of the next reply
     - the update commands works like the **JSON Patch (RFC 6902)** standard, must be a valid JSON array containing operation objects, but supports the following operations instead:
@@ -7,7 +7,7 @@
       - delta: update the value of existing number paths by a delta value
       - insert: insert new items into an object or array
       - remove
-    - don't update field names starts with `_` as they are readonly, such as `_变量`
+    - don't update field names starts with `_` as they are readonly, such as `_variables`
   format: |-
     <UpdateVariable>
     <Analysis>$(IN ENGLISH, no more than 80 words)

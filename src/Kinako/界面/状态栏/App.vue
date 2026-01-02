@@ -1,36 +1,36 @@
 <template>
   <div class="kinako-status-bar">
     <div class="status-item">
-      <span class="label">好感度:</span>
-      <span class="value">{{ data.好感度 }}</span>
+      <span class="label">Affection:</span>
+      <span class="value">{{ data.affection }}</span>
     </div>
     <div class="status-item">
-      <span class="label">情绪:</span>
-      <span class="value">{{ data.情绪 }}</span>
+      <span class="label">Mood:</span>
+      <span class="value">{{ data.mood }}</span>
     </div>
     <div class="status-item">
-      <span class="label">能量:</span>
-      <span class="value">{{ data.能量 }}</span>
+      <span class="label">Energy:</span>
+      <span class="value">{{ data.energy }}</span>
     </div>
     <div class="status-item">
-      <span class="label">信任度:</span>
-      <span class="value">{{ data.信任度 }}</span>
+      <span class="label">Trust:</span>
+      <span class="value">{{ data.trust }}</span>
     </div>
     <div class="status-item">
-      <span class="label">依赖度:</span>
-      <span class="value">{{ data.依赖度 }}</span>
+      <span class="label">Dependency:</span>
+      <span class="value">{{ data.dependency }}</span>
     </div>
     <div class="status-item">
-      <span class="label">饥饿:</span>
-      <span class="value">{{ data.状态.饥饿 }}</span>
+      <span class="label">Hunger:</span>
+      <span class="value">{{ data.status.hunger }}</span>
     </div>
     <div class="status-item">
-      <span class="label">疲劳:</span>
-      <span class="value">{{ data.状态.疲劳 }}</span>
+      <span class="label">Fatigue:</span>
+      <span class="value">{{ data.status.fatigue }}</span>
     </div>
     <div class="status-item">
-      <span class="label">快乐:</span>
-      <span class="value">{{ data.状态.快乐 }}</span>
+      <span class="label">Happiness:</span>
+      <span class="value">{{ data.status.happiness }}</span>
     </div>
   </div>
 </template>

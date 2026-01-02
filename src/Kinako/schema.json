@@ -2,103 +2,103 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
-    "好感度": {
+    "affection": {
       "type": "number"
     },
-    "情绪": {
-      "default": "开心",
+    "mood": {
+      "default": "happy",
       "type": "string",
       "enum": [
-        "开心",
-        "生气",
-        "悲伤",
-        "兴奋",
-        "无聊"
+        "happy",
+        "angry",
+        "sad",
+        "excited",
+        "bored"
       ]
     },
-    "能量": {
+    "energy": {
       "type": "number"
     },
-    "信任度": {
+    "trust": {
       "type": "number"
     },
-    "依赖度": {
+    "dependency": {
       "type": "number"
     },
-    "物品栏": {
+    "inventory": {
       "default": {},
       "type": "object",
       "propertyNames": {
-        "description": "物品名",
+        "description": "item name",
         "type": "string"
       },
       "additionalProperties": {
         "type": "object",
         "properties": {
-          "描述": {
+          "description": {
             "type": "string"
           },
-          "数量": {
+          "quantity": {
             "type": "number"
           }
         },
         "required": [
-          "描述",
-          "数量"
+          "description",
+          "quantity"
         ]
       }
     },
-    "称号": {
+    "titles": {
       "default": [],
       "type": "array",
       "items": {
         "type": "string"
       }
     },
-    "状态": {
+    "status": {
       "default": {},
       "type": "object",
       "properties": {
-        "饥饿": {
+        "hunger": {
           "type": "number"
         },
-        "疲劳": {
+        "fatigue": {
           "type": "number"
         },
-        "快乐": {
+        "happiness": {
           "type": "number"
         }
       },
       "required": [
-        "饥饿",
-        "疲劳",
-        "快乐"
+        "hunger",
+        "fatigue",
+        "happiness"
       ]
     },
-    "记忆": {
+    "memory": {
       "default": [],
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "事件": {
+          "event": {
             "type": "string"
           },
-          "时间": {
+          "timestamp": {
             "type": "number"
           }
         },
         "required": [
-          "事件",
-          "时间"
+          "event",
+          "timestamp"
         ]
       }
     }
   },
   "required": [
-    "好感度",
-    "能量",
-    "信任度",
-    "依赖度"
+    "affection",
+    "energy",
+    "trust",
+    "dependency"
   ]
 }
