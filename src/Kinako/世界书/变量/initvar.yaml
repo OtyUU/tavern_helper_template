@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=../../schema.json
+# 在编写 initvar 之前, 请先保证终端有在运行 `pnpm watch`, 这会生成 schema.json 用于检验 initvar 是否有效
+好感度: 50
+情绪: 开心
+能量: 80
+信任度: 60
+依赖度: 70
+物品栏: {}
+称号: []
+状态:
+  饥饿: 30
+  疲劳: 20
+  快乐: 80
+记忆: []

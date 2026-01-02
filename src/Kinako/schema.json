@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "好感度": {
+      "type": "number"
+    },
+    "情绪": {
+      "default": "开心",
+      "type": "string",
+      "enum": [
+        "开心",
+        "生气",
+        "悲伤",
+        "兴奋",
+        "无聊"
+      ]
+    },
+    "能量": {
+      "type": "number"
+    },
+    "信任度": {
+      "type": "number"
+    },
+    "依赖度": {
+      "type": "number"
+    },
+    "物品栏": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "description": "物品名",
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "描述": {
+            "type": "string"
+          },
+          "数量": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "描述",
+          "数量"
+        ]
+      }
+    },
+    "称号": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "状态": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "饥饿": {
+          "type": "number"
+        },
+        "疲劳": {
+          "type": "number"
+        },
+        "快乐": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "饥饿",
+        "疲劳",
+        "快乐"
+      ]
+    },
+    "记忆": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "事件": {
+            "type": "string"
+          },
+          "时间": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "事件",
+          "时间"
+        ]
+      }
+    }
+  },
+  "required": [
+    "好感度",
+    "能量",
+    "信任度",
+    "依赖度"
+  ]
+}
