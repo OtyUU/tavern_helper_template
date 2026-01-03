@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Kinako Status Bar</title>
+    <style>
+        body { margin: 20px; font-family: sans-serif; }
+        .test-container { border: 1px solid #ccc; padding: 20px; margin: 20px 0; }
+        h2 { color: #333; }
+    </style>
+</head>
+<body>
+    <h1>Kinako Status Bar Test</h1>
+    
+    <div class="test-container">
+        <h2>Status Bar (should render with defaults)</h2>
+        <div id="status-bar-container">
+            <iframe src="./dist/kinako_character_card/interfaces/status_bar/index.html" 
+                    style="width: 100%; height: 600px; border: none;">
+            </iframe>
+        </div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Expected behavior:</h2>
+        <ul>
+            <li>✅ Status bar should render with default values</li>
+            <li>✅ Time should show current time</li>
+            <li>✅ Location should show "Unknown"</li>
+            <li>✅ Weather should show "Sunny"</li>
+            <li>✅ Affection level should be 50/100</li>
+            <li>✅ Tabs should be clickable</li>
+        </ul>
+    </div>
+</body>
+</html>
