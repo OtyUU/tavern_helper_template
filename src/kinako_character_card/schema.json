@@ -3,13 +3,16 @@
   "type": "object",
   "properties": {
     "world": {
+      "default": {},
       "type": "object",
       "properties": {
         "current_time": {
+          "default": "2026-01-03 04:46",
           "type": "string",
           "description": "Format: YYYY-MM-DD HH:MM"
         },
         "current_location": {
+          "default": "Unknown",
           "type": "string"
         },
         "weather": {
@@ -17,6 +20,7 @@
           "type": "string"
         },
         "recent_events": {
+          "default": {},
           "type": "object",
           "propertyNames": {
             "type": "string",
@@ -27,17 +31,14 @@
             "description": "Event description"
           }
         }
-      },
-      "required": [
-        "current_time",
-        "current_location",
-        "recent_events"
-      ]
+      }
     },
     "kinako": {
+      "default": {},
       "type": "object",
       "properties": {
         "affection": {
+          "default": 50,
           "type": "number"
         },
         "mood": {
@@ -54,9 +55,11 @@
           ]
         },
         "energy_level": {
+          "default": 80,
           "type": "number"
         },
         "outfit": {
+          "default": {},
           "type": "object",
           "propertyNames": {
             "type": "string",
@@ -78,6 +81,7 @@
           "type": "string"
         },
         "favorite_things": {
+          "default": {},
           "type": "object",
           "propertyNames": {
             "type": "string",
@@ -99,18 +103,14 @@
             ]
           }
         }
-      },
-      "required": [
-        "affection",
-        "energy_level",
-        "outfit",
-        "favorite_things"
-      ]
+      }
     },
     "sato": {
+      "default": {},
       "type": "object",
       "properties": {
         "inventory": {
+          "default": {},
           "type": "object",
           "propertyNames": {
             "type": "string",
@@ -133,6 +133,7 @@
           }
         },
         "kinako_gifts_received": {
+          "default": {},
           "type": "object",
           "propertyNames": {
             "type": "string",
@@ -146,16 +147,7 @@
         "relationship_notes": {
           "type": "string"
         }
-      },
-      "required": [
-        "inventory",
-        "kinako_gifts_received"
-      ]
+      }
     }
-  },
-  "required": [
-    "world",
-    "kinako",
-    "sato"
-  ]
+  }
 }
