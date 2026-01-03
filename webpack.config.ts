@@ -521,7 +521,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
       }
 
       if (
-        ['vue', 'vue-router', 'pixi.js'].every(key => request !== key) &&
+        ['pixi.js'].every(key => request !== key) &&
         ['pixi', 'react', 'vue'].some(key => request.includes(key))
       ) {
         return callback();
@@ -531,8 +531,6 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
         lodash: '_',
         showdown: 'showdown',
         toastr: 'toastr',
-        vue: 'Vue',
-        'vue-router': 'VueRouter',
         yaml: 'YAML',
         zod: 'z',
         'pixi.js': 'PIXI',
