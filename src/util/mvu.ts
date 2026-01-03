@@ -16,10 +16,25 @@ export function defineMvuDataStore<T extends z.ZodObject>(
       .sortBy(entry => entry[0])
       .map(entry => entry[1])
       .join('.')}`,
-    errorCatched(() => {
-      const data = ref(schema.parse(_.get(getVariables(variable_option), 'stat_data', {}))) as Ref<z.infer<T>>;
+    () => {
+      // Parse initial data, using defaults if parsing fails
+      const stat_data = _.get(getVariables(variable_option), 'stat_data', {});
+      const parse_result = schema.safeParse(stat_data);
+
+      if (parse_result.error) {
+        console.warn('Failed to parse initial MVU data, using defaults:', parse_result.error);
+        console.warn('Input data was:', stat_data);
+      }
+
+      const data = ref(parse_result.success ? parse_result.data : schema.parse({})) as Ref<z.infer<T>>;
+
       if (additional_setup) {
-        additional_setup(data);
+        try {
+          additional_setup(data);
+        } catch (error) {
+          console.error('Error in additional_setup:', error);
+          toastr.error(`MVU store setup error: ${error}`);
+        }
       }
 
       useIntervalFn(() => {
@@ -56,6 +71,6 @@ export function defineMvuDataStore<T extends z.ZodObject>(
       );
 
       return { data };
-    }),
+    },
   );
 }
