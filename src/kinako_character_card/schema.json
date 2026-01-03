@@ -7,7 +7,7 @@
       "type": "object",
       "properties": {
         "current_time": {
-          "default": "2026-01-03 04:46",
+          "default": "2026-01-03 04:50",
           "type": "string",
           "description": "Format: YYYY-MM-DD HH:MM"
         },
