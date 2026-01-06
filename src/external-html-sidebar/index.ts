@@ -1,4 +1,6 @@
 import { deteleportStyle, teleportStyle } from '../util/script';
+import jquerySource from 'jquery/dist/jquery.min.js?raw';
+import lodashSource from 'lodash/lodash.min.js?raw';
 
 const SIDEBAR_ID = 'tavern-helper-external-html-sidebar';
 const SIDEBAR_WIDTH = '500px';
@@ -12,7 +14,178 @@ const SettingsSchema = z.object({
 
 type Settings = z.infer<typeof SettingsSchema>;
 
+const HOST_BRIDGE_KEY = '__tavern_helper_external_html_sidebar_bridge__';
+
 let sidebarVisible = false;
+let currentBlobUrl: string | null = null;
+
+function installHostBridge(): void {
+  try {
+    if (!window.parent) return;
+
+    (window.parent as any)[HOST_BRIDGE_KEY] = {
+      getGlobal: (name: string) => (globalThis as any)[name],
+      getCurrentMessageId: () => {
+        const getLastMessageId = (globalThis as any).getLastMessageId as undefined | (() => number);
+        if (typeof getLastMessageId === 'function') return getLastMessageId();
+
+        const chat = (globalThis as any).SillyTavern?.chat;
+        if (Array.isArray(chat)) return Math.max(0, chat.length - 1);
+
+        return 0;
+      },
+    };
+  } catch {
+    // ignore
+  }
+}
+
+function escapeInlineScript(source: string): string {
+  return source.replaceAll('</script', '<\\/script');
+}
+
+function setSidebarIframeSrc(src: string): void {
+  if (currentBlobUrl) {
+    URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = null;
+  }
+
+  if (src.startsWith('blob:')) {
+    currentBlobUrl = src;
+  }
+
+  $(`#${SIDEBAR_ID}-iframe`).attr('src', src);
+}
+
+function buildRuntimeWrappedHtml(html: string): string {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+
+  if (!doc.head) {
+    const head = doc.createElement('head');
+    doc.documentElement.insertBefore(head, doc.body);
+  }
+
+  if (!doc.head.querySelector('meta[charset]')) {
+    const meta = doc.createElement('meta');
+    meta.setAttribute('charset', 'UTF-8');
+    doc.head.prepend(meta);
+  }
+
+  const runtimeShim = `
+(() => {
+  const BRIDGE_KEY = ${JSON.stringify(HOST_BRIDGE_KEY)};
+  const bridge = (() => {
+    try {
+      return window.parent && window.parent[BRIDGE_KEY];
+    } catch {
+      return undefined;
+    }
+  })();
+
+  const missing = name => () => {
+    throw new Error(
+      '[external-html-sidebar] Missing runtime global: ' +
+        name +
+        '. This page must be rendered inside SillyTavern with Tavern Helper + external-html-sidebar.',
+    );
+  };
+
+  const getGlobal = name => (bridge && bridge.getGlobal ? bridge.getGlobal(name) : undefined);
+
+  const bridgeFn = name => (...args) => {
+    const fn = getGlobal(name);
+    if (typeof fn !== 'function') return missing(name)();
+    return fn(...args);
+  };
+
+  const syncGlobal = name => {
+    try {
+      const value = getGlobal(name);
+      if (typeof value !== 'undefined' && typeof window[name] === 'undefined') {
+        window[name] = value;
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  if (typeof window.waitGlobalInitialized !== 'function') {
+    window.waitGlobalInitialized = async name => {
+      await bridgeFn('waitGlobalInitialized')(name);
+      syncGlobal(name);
+    };
+  }
+  if (typeof window.getAllVariables !== 'function') window.getAllVariables = bridgeFn('getAllVariables');
+  if (typeof window.getVariables !== 'function') window.getVariables = bridgeFn('getVariables');
+  if (typeof window.replaceVariables !== 'function') window.replaceVariables = bridgeFn('replaceVariables');
+  if (typeof window.triggerSlash !== 'function') window.triggerSlash = bridgeFn('triggerSlash');
+  if (typeof window.eventOn !== 'function') window.eventOn = bridgeFn('eventOn');
+  if (typeof window.getButtonEvent !== 'function') window.getButtonEvent = bridgeFn('getButtonEvent');
+  if (typeof window.replaceScriptButtons !== 'function') window.replaceScriptButtons = bridgeFn('replaceScriptButtons');
+
+  if (typeof window.errorCatched !== 'function') {
+    window.errorCatched = fn => (...args) => {
+      try {
+        const result = fn(...args);
+        if (result && typeof result.then === 'function') {
+          return result.catch(err => {
+            console.error(err);
+            throw err;
+          });
+        }
+        return result;
+      } catch (err) {
+        console.error(err);
+        throw err;
+      }
+    };
+  }
+
+  syncGlobal('SillyTavern');
+  syncGlobal('toastr');
+  syncGlobal('Mvu');
+  syncGlobal('tavern_events');
+  syncGlobal('z');
+  syncGlobal('gsap');
+  syncGlobal('YAML');
+
+  if (typeof window.getCurrentMessageId !== 'function') {
+    window.getCurrentMessageId = () => {
+      try {
+        if (bridge && typeof bridge.getCurrentMessageId === 'function') {
+          return bridge.getCurrentMessageId();
+        }
+      } catch {
+        // ignore
+      }
+
+      try {
+        const chat = window.SillyTavern && window.SillyTavern.chat;
+        if (Array.isArray(chat)) return Math.max(0, chat.length - 1);
+      } catch {
+        // ignore
+      }
+
+      return 0;
+    };
+  }
+})();
+`;
+
+  const scriptJquery = doc.createElement('script');
+  scriptJquery.textContent = escapeInlineScript(jquerySource);
+
+  const scriptLodash = doc.createElement('script');
+  scriptLodash.textContent = escapeInlineScript(lodashSource);
+
+  const scriptShim = doc.createElement('script');
+  scriptShim.textContent = escapeInlineScript(runtimeShim);
+
+  doc.head.prepend(scriptJquery, scriptLodash, scriptShim);
+
+  return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`;
+}
 
 function getSettings(): Settings {
   try {
@@ -318,11 +491,12 @@ function updateUrl(url: string) {
         url = 'https://' + url;
       }
     }
+
     SettingsSchema.parse({ url });
-    $(`#${SIDEBAR_ID}-iframe`).attr('src', url);
-    saveSettings({ url });
+    setSidebarIframeSrc(url);
+    saveSettings({ ...getSettings(), url });
     toastr.success('URL updated and loaded');
-  } catch (e) {
+  } catch {
     toastr.error('Invalid URL format');
   }
 }
@@ -343,52 +517,16 @@ function switchMode(newMode: 'url' | 'paste') {
 
 function renderPastedCode(code: string) {
   try {
-    // Extract HTML, CSS, and JS from the pasted code
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(code, 'text/html');
+    const fullHtml = buildRuntimeWrappedHtml(code);
 
-    // Get the body content (remove outer body tags if present)
-    let htmlContent = doc.body.innerHTML;
-    if (!htmlContent.trim()) {
-      // If no body content, use the whole document
-      htmlContent = doc.documentElement.outerHTML;
-    }
-
-    // Extract styles from style tags
-    const styles = Array.from(doc.querySelectorAll('style'))
-      .map(style => style.textContent)
-      .join('\n');
-
-    // Extract scripts from script tags
-    const scripts = Array.from(doc.querySelectorAll('script'))
-      .map(script => script.textContent)
-      .join('\n');
-
-    // Create a complete HTML document
-    const fullHtml = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>${styles}</style>
-</head>
-<body>
-  ${htmlContent}
-  <script>${scripts}</script>
-</body>
-</html>`;
-
-    // Create a blob URL from the HTML content
     const blob = new Blob([fullHtml], { type: 'text/html' });
     const blobUrl = URL.createObjectURL(blob);
 
-    // Load the blob URL into the iframe
-    $(`#${SIDEBAR_ID}-iframe`).attr('src', blobUrl);
+    setSidebarIframeSrc(blobUrl);
 
-    // Save the pasted content
-    const settings = getSettings();
-    saveSettings({ ...settings, pasteContent: code });
+    saveSettings({ ...getSettings(), pasteContent: code });
 
-    toastr.success('Code rendered successfully');
+    toastr.success('Code rendered (Tavern Helper runtime shims enabled)');
   } catch (error) {
     console.error('Failed to render pasted code:', error);
     toastr.error('Failed to render code: ' + (error instanceof Error ? error.message : String(error)));
@@ -402,6 +540,7 @@ function toggleSidebar(show?: boolean) {
 
 // Initialization
 $(() => {
+  installHostBridge();
   injectCSS();
   injectHTML();
 
@@ -430,4 +569,15 @@ $(() => {
 $(window).on('pagehide', () => {
   $(`#${SIDEBAR_ID}`).remove();
   deteleportStyle();
+
+  if (currentBlobUrl) {
+    URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = null;
+  }
+
+  try {
+    delete (window.parent as any)[HOST_BRIDGE_KEY];
+  } catch {
+    // ignore
+  }
 });
