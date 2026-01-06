@@ -5,7 +5,7 @@ const SIDEBAR_WIDTH = '500px';
 
 // Zod schema for settings
 const SettingsSchema = z.object({
-  url: z.string().url().or(z.literal('about:blank')).default('about:blank'),
+  url: z.string().min(1).default('about:blank'),
 });
 
 type Settings = z.infer<typeof SettingsSchema>;
@@ -156,7 +156,7 @@ function injectHTML(): void {
         <iframe id="${SIDEBAR_ID}-iframe" src="${settings.url}"></iframe>
       </div>
       <div class="footer">
-        <input type="text" class="url-input" id="${SIDEBAR_ID}-url-input" value="${settings.url === 'about:blank' ? '' : settings.url}" placeholder="Enter HTML URL...">
+        <input type="text" class="url-input" id="${SIDEBAR_ID}-url-input" value="${settings.url === 'about:blank' ? '' : settings.url}" placeholder="Enter HTML URL (e.g. ./panel/index.html)...">
         <button class="load-btn" id="${SIDEBAR_ID}-load-btn">Load</button>
       </div>
     </div>
@@ -182,9 +182,17 @@ function injectHTML(): void {
 
 function updateUrl(url: string) {
   try {
-    // Add protocol if missing
-    if (!url.startsWith('http://') && !url.startsWith('https://') && url !== 'about:blank') {
-      url = 'https://' + url;
+    // Add protocol if missing and it looks like a domain
+    if (
+      !url.startsWith('http://') &&
+      !url.startsWith('https://') &&
+      !url.startsWith('./') &&
+      !url.startsWith('/') &&
+      url !== 'about:blank'
+    ) {
+      if (url.includes('.') && !url.includes(' ')) {
+        url = 'https://' + url;
+      }
     }
     SettingsSchema.parse({ url });
     $(`#${SIDEBAR_ID}-iframe`).attr('src', url);
