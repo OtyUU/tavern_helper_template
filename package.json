@@ -1,4 +1,7 @@
 {
+  "name": "tavern-helper-template",
+  "version": "1.0.0",
+  "description": "Template for creating frontends and scripts for Tavern Helper, extending SillyTavern with custom UIs and background functionality using Vue 3, React, PixiJS, and Zod-based MVU state management",
   "scripts": {
     "build:dev": "webpack --mode development",
     "build": "webpack --mode production",
