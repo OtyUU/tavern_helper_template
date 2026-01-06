@@ -1,5 +1,5 @@
 // Sidebar logic for overlay sidebar
-import { deteleportStyle, teleportStyle } from '../../util/script';
+import { deteleportStyle, teleportStyle } from '../util/script';
 import { eventUtils, querySafe } from './utils';
 
 // Configuration constants for sidebar appearance
@@ -7,32 +7,35 @@ const SIDEBAR_WIDTH = '500px'; // Default width, can be modified here
 const SIDEBAR_ID = 'tavern-helper-overlay-sidebar';
 
 declare global {
-    interface Window {
-        toggleSidebar: () => void;
-        hideSidebar: () => void;
-        showSidebar: () => void;
-        saveCurrentNotes?: () => void;
-        loadNotes?: () => string;
-        // Debug functions
-        testSidebarButton?: () => boolean;
-        enableSidebarDebug?: (verbose?: boolean) => void;
-        sidebarDebug?: boolean;
-        // Additional properties from other modules
-        tavern_helper?: {
-            registerVariable?(name: string, config: {
-                get: () => any;
-                set?: (value: any) => void;
-                description?: string;
-            }): void;
-        };
-        triggerAutoSave?: () => void;
-    }
+  interface Window {
+    toggleSidebar: () => void;
+    hideSidebar: () => void;
+    showSidebar: () => void;
+    saveCurrentNotes?: () => void;
+    loadNotes?: () => string;
+    // Debug functions
+    testSidebarButton?: () => boolean;
+    enableSidebarDebug?: (verbose?: boolean) => void;
+    sidebarDebug?: boolean;
+    // Additional properties from other modules
+    tavern_helper?: {
+      registerVariable?(
+        name: string,
+        config: {
+          get: () => any;
+          set?: (value: any) => void;
+          description?: string;
+        },
+      ): void;
+    };
+    triggerAutoSave?: () => void;
+  }
 }
 
 let sidebarVisible = false;
 
 function injectCSS(): void {
-    const css = `
+  const css = `
         .tavern-helper-overlay-sidebar {
             position: fixed;
             top: 0;
@@ -185,18 +188,18 @@ function injectCSS(): void {
             background: rgba(80, 85, 92, 1);
         }
     `;
-    
-    $('<style>').text(css).appendTo('head');
-    teleportStyle();
+
+  $('<style>').text(css).appendTo('head');
+  teleportStyle();
 }
 
 function injectHTML(): void {
-    if (querySafe(`#${SIDEBAR_ID}`)?.length ?? 0 > 0) {
-        return;
-    }
+  if (querySafe(`#${SIDEBAR_ID}`)?.length ?? 0 > 0) {
+    return;
+  }
 
-    // SVG icon for notes (matches SillyTavern's icon style)
-    const noteIcon = `<svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  // SVG icon for notes (matches SillyTavern's icon style)
+  const noteIcon = `<svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
         <polyline points="14 2 14 8 20 8"></polyline>
         <line x1="16" y1="13" x2="8" y2="13"></line>
@@ -204,7 +207,7 @@ function injectHTML(): void {
         <polyline points="10 9 9 9 8 9"></polyline>
     </svg>`;
 
-    const html = `
+  const html = `
         <div id="${SIDEBAR_ID}" class="tavern-helper-overlay-sidebar">
             <div class="header">
                 <div class="header-title">
@@ -219,238 +222,243 @@ function injectHTML(): void {
             </div>
         </div>
     `;
-    
-    $(html).appendTo('body');
+
+  $(html).appendTo('body');
 }
 
 function setupEventListeners(): void {
-    // Setup close button via event delegation using safe selector
-    eventUtils.on(`#${SIDEBAR_ID} .close-btn`, 'click', hideSidebar);
-    
-    // Save on textarea blur (immediate save) with error handling
-    eventUtils.on('#tavern-helper-notes', 'blur', function() {
-        const debug = (window as any).sidebarDebug;
+  // Setup close button via event delegation using safe selector
+  eventUtils.on(`#${SIDEBAR_ID} .close-btn`, 'click', hideSidebar);
+
+  // Save on textarea blur (immediate save) with error handling
+  eventUtils.on('#tavern-helper-notes', 'blur', function () {
+    const debug = (window as any).sidebarDebug;
+    if (debug) {
+      console.debug('[Tavern Helper] Textarea blur detected');
+    }
+
+    try {
+      if (typeof window.saveCurrentNotes === 'function') {
+        window.saveCurrentNotes();
         if (debug) {
-            console.debug('[Tavern Helper] Textarea blur detected');
+          console.info('[Tavern Helper] Auto-saved on blur');
         }
-        
-        try {
-            if (typeof window.saveCurrentNotes === 'function') {
-                window.saveCurrentNotes();
-                if (debug) {
-                    console.info('[Tavern Helper] Auto-saved on blur');
-                }
-            }
-        } catch (e) {
-            console.warn('[Tavern Helper] Blur save error:', e);
-        }
-        // Also trigger auto-save immediately
-        if (typeof (window as any).triggerAutoSave === 'function') {
-            (window as any).triggerAutoSave();
-        }
-    });
-    
-    // Save on OCC textarea blur
-    eventUtils.on('#tavern-helper-occ', 'blur', function(this: HTMLElement) {
-        const debug = (window as any).sidebarDebug;
-        if (debug) {
-            console.debug('[Tavern Helper] OCC textarea blur detected');
-        }
-        try {
-            // Save OCC notes if saveCurrentOCC function exists
-            if (typeof (window as any).saveCurrentOCC === 'function') {
-                (window as any).saveCurrentOCC();
-            } else {
-                // Fallback: save via storage API
-                const content = $(this).val() as string;
-                (window as any).saveOCCNotes?.(content);
-            }
-        } catch (e) {
-            console.warn('[Tavern Helper] OCC blur save error:', e);
-        }
-    });
-    
-    // Escape key to close sidebar
-    eventUtils.on(document, 'keydown', function(e: JQuery.Event) {
-        if (e.key === 'Escape' && sidebarVisible) {
-            console.log('[Tavern Helper] Escape key pressed, closing sidebar');
-            hideSidebar();
-        }
-    });
+      }
+    } catch (e) {
+      console.warn('[Tavern Helper] Blur save error:', e);
+    }
+    // Also trigger auto-save immediately
+    if (typeof (window as any).triggerAutoSave === 'function') {
+      (window as any).triggerAutoSave();
+    }
+  });
+
+  // Save on OCC textarea blur
+  eventUtils.on('#tavern-helper-occ', 'blur', function (this: HTMLElement) {
+    const debug = (window as any).sidebarDebug;
+    if (debug) {
+      console.debug('[Tavern Helper] OCC textarea blur detected');
+    }
+    try {
+      // Save OCC notes if saveCurrentOCC function exists
+      if (typeof (window as any).saveCurrentOCC === 'function') {
+        (window as any).saveCurrentOCC();
+      } else {
+        // Fallback: save via storage API
+        const content = $(this).val() as string;
+        (window as any).saveOCCNotes?.(content);
+      }
+    } catch (e) {
+      console.warn('[Tavern Helper] OCC blur save error:', e);
+    }
+  });
+
+  // Escape key to close sidebar
+  eventUtils.on(document, 'keydown', function (e: JQuery.Event) {
+    if (e.key === 'Escape' && sidebarVisible) {
+      console.log('[Tavern Helper] Escape key pressed, closing sidebar');
+      hideSidebar();
+    }
+  });
 }
 
 export function toggleSidebar(): void {
-    const debug = (window as any).sidebarDebug;
-    
-    console.groupCollapsed(`[Tavern Helper] toggleSidebar called, current visibility: ${sidebarVisible}`);
-    console.info('Action:', sidebarVisible ? 'Hiding' : 'Showing');
-    if (debug) {
-        console.debug('Full state:', { sidebarVisible, SIDEBAR_ID });
-    }
-    
-    sidebarVisible = !sidebarVisible;
-    const sidebar = querySafe(`#${SIDEBAR_ID}`);
-    
-    sidebar?.toggleClass('visible', sidebarVisible);
-    console.log(`[Tavern Helper] Sidebar visibility set to: ${sidebarVisible}`);
-    
-    if (sidebarVisible) {
-        // Focus main textarea when showing with slight delay for DOM ready
-        setTimeout(() => {
-            const textarea = querySafe('#tavern-helper-notes');
-            if (textarea?.length) {
-                textarea.trigger('focus');
-                console.info('[Tavern Helper] Textarea focused');
-            } else {
-                console.warn('[Tavern Helper] Textarea not found for focus');
-            }
-        }, 100);
-        
-        // Load saved notes with safety check
-        if (typeof window.loadNotes === 'function') {
-            const notes = window.loadNotes();
-            const textarea = querySafe('#tavern-helper-notes');
-            textarea?.val(notes);
-            console.log(`[Tavern Helper] Notes loaded, length: ${notes.length}`);
-            if (debug && notes.length > 0) {
-                console.debug('First 100 chars:', notes.substring(0, 100) + '...');
-            }
-        } else {
-            console.error('[Tavern Helper] window.loadNotes not defined');
-        }
-        
-        // Load OCC notes
-        if (typeof (window as any).loadOCCNotes === 'function') {
-            const occNotes = (window as any).loadOCCNotes();
-            const occTextarea = querySafe('#tavern-helper-occ');
-            occTextarea?.val(occNotes);
-            console.log(`[Tavern Helper] OCC notes loaded, length: ${occNotes.length}`);
-        }
+  const debug = (window as any).sidebarDebug;
+
+  console.groupCollapsed(`[Tavern Helper] toggleSidebar called, current visibility: ${sidebarVisible}`);
+  console.info('Action:', sidebarVisible ? 'Hiding' : 'Showing');
+  if (debug) {
+    console.debug('Full state:', { sidebarVisible, SIDEBAR_ID });
+  }
+
+  sidebarVisible = !sidebarVisible;
+  const sidebar = querySafe(`#${SIDEBAR_ID}`);
+
+  sidebar?.toggleClass('visible', sidebarVisible);
+  console.log(`[Tavern Helper] Sidebar visibility set to: ${sidebarVisible}`);
+
+  if (sidebarVisible) {
+    // Focus main textarea when showing with slight delay for DOM ready
+    setTimeout(() => {
+      const textarea = querySafe('#tavern-helper-notes');
+      if (textarea?.length) {
+        textarea.trigger('focus');
+        console.info('[Tavern Helper] Textarea focused');
+      } else {
+        console.warn('[Tavern Helper] Textarea not found for focus');
+      }
+    }, 100);
+
+    // Load saved notes with safety check
+    if (typeof window.loadNotes === 'function') {
+      const notes = window.loadNotes();
+      const textarea = querySafe('#tavern-helper-notes');
+      textarea?.val(notes);
+      console.log(`[Tavern Helper] Notes loaded, length: ${notes.length}`);
+      if (debug && notes.length > 0) {
+        console.debug('First 100 chars:', notes.substring(0, 100) + '...');
+      }
     } else {
-        // Save both textareas when hiding
-        if (typeof window.saveCurrentNotes === 'function') {
-            console.log('[Tavern Helper] Auto-saving before hiding');
-            window.saveCurrentNotes();
-        } else {
-            console.warn('[Tavern Helper] window.saveCurrentNotes not defined, skipping auto-save');
-        }
-        
-        if (typeof (window as any).saveCurrentOCC === 'function') {
-            (window as any).saveCurrentOCC();
-        } else if (typeof (window as any).saveOCCNotes === 'function') {
-            const occContent = $('#tavern-helper-occ').val() as string;
-            (window as any).saveOCCNotes(occContent);
-        }
+      console.error('[Tavern Helper] window.loadNotes not defined');
     }
-    
-    console.groupEnd();
+
+    // Load OCC notes
+    if (typeof (window as any).loadOCCNotes === 'function') {
+      const occNotes = (window as any).loadOCCNotes();
+      const occTextarea = querySafe('#tavern-helper-occ');
+      occTextarea?.val(occNotes);
+      console.log(`[Tavern Helper] OCC notes loaded, length: ${occNotes.length}`);
+    }
+  } else {
+    // Save both textareas when hiding
+    if (typeof window.saveCurrentNotes === 'function') {
+      console.log('[Tavern Helper] Auto-saving before hiding');
+      window.saveCurrentNotes();
+    } else {
+      console.warn('[Tavern Helper] window.saveCurrentNotes not defined, skipping auto-save');
+    }
+
+    if (typeof (window as any).saveCurrentOCC === 'function') {
+      (window as any).saveCurrentOCC();
+    } else if (typeof (window as any).saveOCCNotes === 'function') {
+      const occContent = $('#tavern-helper-occ').val() as string;
+      (window as any).saveOCCNotes(occContent);
+    }
+  }
+
+  console.groupEnd();
 }
 
 export function showSidebar(): void {
-    if (!sidebarVisible) {
-        toggleSidebar();
-    }
+  if (!sidebarVisible) {
+    toggleSidebar();
+  }
 }
 
 export function hideSidebar(): void {
-    if (sidebarVisible) {
-        toggleSidebar();
-    }
+  if (sidebarVisible) {
+    toggleSidebar();
+  }
 }
 
 export function initializeSidebar(): void {
-    const debug = (window as any).sidebarDebug;
-    
-    // Use different console methods for better visibility
-    console.groupCollapsed('[Tavern Helper] Initializing sidebar...');
-    console.info('Start time:', new Date().toISOString());
-    console.debug('Debug flag:', debug);
-    
-    injectCSS();
-    console.log('[Tavern Helper] CSS injected');
-    
-    injectHTML();
-    console.log('[Tavern Helper] HTML injected');
-    
-    setupEventListeners();
-    console.log('[Tavern Helper] Event listeners set up');
-    
-    // Expose functions globally for inline handlers
-    window.toggleSidebar = toggleSidebar;
-    window.hideSidebar = hideSidebar;
-    window.showSidebar = showSidebar;
-    
-    // Expose debug functions regardless of debug flag (but only attach if not already present)
-    (window as any).testSidebarButton = testSidebarButton;
-    (window as any).enableSidebarDebug = enableSidebarDebug;
-    console.info('[Tavern Helper] Debug functions exposed', debug ? '(debug mode active)' : '(global)');
-    
-    console.log('[Tavern Helper] Global functions exposed');
-    console.groupEnd();
-    
-    // Visual debug indicator if debug mode is active
-    if (debug) {
-        addVisualDebugIndicator();
-    }
+  const debug = (window as any).sidebarDebug;
+
+  // Use different console methods for better visibility
+  console.groupCollapsed('[Tavern Helper] Initializing sidebar...');
+  console.info('Start time:', new Date().toISOString());
+  console.debug('Debug flag:', debug);
+
+  injectCSS();
+  console.log('[Tavern Helper] CSS injected');
+
+  injectHTML();
+  console.log('[Tavern Helper] HTML injected');
+
+  setupEventListeners();
+  console.log('[Tavern Helper] Event listeners set up');
+
+  // Expose functions globally for inline handlers
+  window.toggleSidebar = toggleSidebar;
+  window.hideSidebar = hideSidebar;
+  window.showSidebar = showSidebar;
+
+  // Expose debug functions regardless of debug flag (but only attach if not already present)
+  (window as any).testSidebarButton = testSidebarButton;
+  (window as any).enableSidebarDebug = enableSidebarDebug;
+  console.info('[Tavern Helper] Debug functions exposed', debug ? '(debug mode active)' : '(global)');
+
+  console.log('[Tavern Helper] Global functions exposed');
+  console.groupEnd();
+
+  // Visual debug indicator if debug mode is active
+  if (debug) {
+    addVisualDebugIndicator();
+  }
 }
 
 // Debug test function that can be called from browser console
 export function testSidebarButton(): boolean {
-    console.group('[Tavern Helper] Debug Test: Autosave Functionality');
-    console.info('Testing autosave functionality at', new Date().toISOString());
-    
-    console.log('Save button removed - testing autosave functionality instead');
-    
-    // Test storage functions
-    const storageAvailable = typeof localStorage !== 'undefined';
-    console.log('localStorage available:', storageAvailable);
-    
-    const saveFnAvailable = typeof window.saveCurrentNotes === 'function';
-    console.log('saveCurrentNotes function available:', saveFnAvailable);
-    
-    const textareaExists = querySafe('#tavern-helper-notes') !== null;
-    console.log('Textarea exists:', textareaExists);
-    
-    const result = storageAvailable && saveFnAvailable && textareaExists;
-    console.log('Overall test result:', result ? 'PASS' : 'FAIL');
-    console.groupEnd();
-    
-    return result;
+  console.group('[Tavern Helper] Debug Test: Autosave Functionality');
+  console.info('Testing autosave functionality at', new Date().toISOString());
+
+  console.log('Save button removed - testing autosave functionality instead');
+
+  // Test storage functions
+  const storageAvailable = typeof localStorage !== 'undefined';
+  console.log('localStorage available:', storageAvailable);
+
+  const saveFnAvailable = typeof window.saveCurrentNotes === 'function';
+  console.log('saveCurrentNotes function available:', saveFnAvailable);
+
+  const textareaExists = querySafe('#tavern-helper-notes') !== null;
+  console.log('Textarea exists:', textareaExists);
+
+  const result = storageAvailable && saveFnAvailable && textareaExists;
+  console.log('Overall test result:', result ? 'PASS' : 'FAIL');
+  console.groupEnd();
+
+  return result;
 }
 
 // Enable debug mode with optional verbosity
 export function enableSidebarDebug(verbose = true): void {
-    (window as any).sidebarDebug = true;
-    console.warn('[Tavern Helper] Debug mode enabled', verbose ? '(verbose)' : '');
-    if (verbose) {
-        console.log('[Tavern Helper] Current environment:', {
-            sidebarVisible,
-            sidebarId: SIDEBAR_ID,
-            jQueryLoaded: typeof $ !== 'undefined',
-            textareaExists: $('#tavern-helper-notes').length > 0,
-            debugFlag: (window as any).sidebarDebug
-        });
-    }
+  (window as any).sidebarDebug = true;
+  console.warn('[Tavern Helper] Debug mode enabled', verbose ? '(verbose)' : '');
+  if (verbose) {
+    console.log('[Tavern Helper] Current environment:', {
+      sidebarVisible,
+      sidebarId: SIDEBAR_ID,
+      jQueryLoaded: typeof $ !== 'undefined',
+      textareaExists: $('#tavern-helper-notes').length > 0,
+      debugFlag: (window as any).sidebarDebug,
+    });
+  }
 }
 
 // Add a small visual indicator when debug is active
 function addVisualDebugIndicator(): void {
-    const indicator = $('<div>').css({
-        position: 'fixed',
-        bottom: '10px',
-        right: '10px',
-        width: '20px',
-        height: '20px',
-        borderRadius: '50%',
-        background: '#ff5555',
-        border: '2px solid #ffb86c',
-        zIndex: '1000000',
-        opacity: '0.7',
-        pointerEvents: 'none'
-    }).attr('title', 'Sidebar Debug Mode Active').appendTo('body');
-    
-    // Add pulsing animation
-    $('<style>').text(`
+  const indicator = $('<div>')
+    .css({
+      position: 'fixed',
+      bottom: '10px',
+      right: '10px',
+      width: '20px',
+      height: '20px',
+      borderRadius: '50%',
+      background: '#ff5555',
+      border: '2px solid #ffb86c',
+      zIndex: '1000000',
+      opacity: '0.7',
+      pointerEvents: 'none',
+    })
+    .attr('title', 'Sidebar Debug Mode Active')
+    .appendTo('body');
+
+  // Add pulsing animation
+  $('<style>')
+    .text(
+      `
         @keyframes debugPulse {
             0% { opacity: 0.3; transform: scale(1); }
             50% { opacity: 0.9; transform: scale(1.1); }
@@ -459,22 +467,24 @@ function addVisualDebugIndicator(): void {
         #tavern-helper-debug-indicator {
             animation: debugPulse 2s infinite;
         }
-    `).appendTo('head');
-    
-    indicator.attr('id', 'tavern-helper-debug-indicator');
-    
-    console.debug('[Tavern Helper] Visual debug indicator added');
+    `,
+    )
+    .appendTo('head');
+
+  indicator.attr('id', 'tavern-helper-debug-indicator');
+
+  console.debug('[Tavern Helper] Visual debug indicator added');
 }
 
 export function cleanupSidebar(): void {
-    $(`#${SIDEBAR_ID}`).remove();
-    $(`style:contains(".tavern-helper-overlay-sidebar")`).remove();
-    deteleportStyle();
-    
-    // Remove global functions (they are optional due to TypeScript strictness)
-    delete (window as any).toggleSidebar;
-    delete (window as any).hideSidebar;
-    delete (window as any).showSidebar;
-    delete (window as any).testSidebarButton;
-    delete (window as any).enableSidebarDebug;
+  $(`#${SIDEBAR_ID}`).remove();
+  $(`style:contains(".tavern-helper-overlay-sidebar")`).remove();
+  deteleportStyle();
+
+  // Remove global functions (they are optional due to TypeScript strictness)
+  delete (window as any).toggleSidebar;
+  delete (window as any).hideSidebar;
+  delete (window as any).showSidebar;
+  delete (window as any).testSidebarButton;
+  delete (window as any).enableSidebarDebug;
 }
