@@ -5,7 +5,9 @@ const SIDEBAR_WIDTH = '500px';
 
 // Zod schema for settings
 const SettingsSchema = z.object({
+  mode: z.enum(['url', 'paste']).default('url'),
   url: z.string().min(1).default('about:blank'),
+  pasteContent: z.string().default(''),
 });
 
 type Settings = z.infer<typeof SettingsSchema>;
@@ -134,6 +136,90 @@ function injectCSS(): void {
     #${SIDEBAR_ID} .load-btn:hover {
       background: #2d3748;
     }
+
+    #${SIDEBAR_ID} .mode-toggle {
+      display: flex;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 6px;
+      padding: 2px;
+      margin-bottom: 8px;
+    }
+
+    #${SIDEBAR_ID} .mode-option {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #aaa;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    #${SIDEBAR_ID} .mode-option.active {
+      background: #4a5568;
+      color: #fff;
+    }
+
+    #${SIDEBAR_ID} .mode-content {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+    }
+
+    #${SIDEBAR_ID} .paste-container {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    #${SIDEBAR_ID} .paste-container.active {
+      display: flex;
+    }
+
+    #${SIDEBAR_ID} .url-container {
+      display: none;
+      gap: 8px;
+    }
+
+    #${SIDEBAR_ID} .url-container.active {
+      display: flex;
+    }
+
+    #${SIDEBAR_ID} .paste-textarea {
+      flex: 1;
+      background: rgba(0, 0, 0, 0.3);
+      border: 0.5px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      color: #fff;
+      padding: 8px;
+      font-size: 12px;
+      font-family: 'Courier New', monospace;
+      resize: vertical;
+      min-height: 60px;
+      outline: none;
+    }
+
+    #${SIDEBAR_ID} .paste-textarea:focus {
+      border-color: #4a5568;
+    }
+
+    #${SIDEBAR_ID} .render-btn {
+      background: #4a5568;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      padding: 6px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    #${SIDEBAR_ID} .render-btn:hover {
+      background: #2d3748;
+    }
   `;
   $('<style>').text(css).appendTo('head');
   teleportStyle();
@@ -143,6 +229,7 @@ function injectHTML(): void {
   if ($(`#${SIDEBAR_ID}`).length > 0) return;
 
   const settings = getSettings();
+  const mode = settings.mode || 'url';
   const html = `
     <div id="${SIDEBAR_ID}">
       <div class="header">
@@ -156,14 +243,34 @@ function injectHTML(): void {
         <iframe id="${SIDEBAR_ID}-iframe" src="${settings.url}"></iframe>
       </div>
       <div class="footer">
-        <input type="text" class="url-input" id="${SIDEBAR_ID}-url-input" value="${settings.url === 'about:blank' ? '' : settings.url}" placeholder="Enter HTML URL (e.g. ./panel/index.html)...">
-        <button class="load-btn" id="${SIDEBAR_ID}-load-btn">Load</button>
+        <div class="mode-toggle">
+          <button class="mode-option ${mode === 'url' ? 'active' : ''}" data-mode="url">URL</button>
+          <button class="mode-option ${mode === 'paste' ? 'active' : ''}" data-mode="paste">Paste Code</button>
+        </div>
+        <div class="mode-content">
+          <div class="url-container ${mode === 'url' ? 'active' : ''}">
+            <input type="text" class="url-input" id="${SIDEBAR_ID}-url-input" value="${settings.url === 'about:blank' ? '' : settings.url}" placeholder="Enter HTML URL (e.g. ./panel/index.html)...">
+            <button class="load-btn" id="${SIDEBAR_ID}-load-btn">Load</button>
+          </div>
+          <div class="paste-container ${mode === 'paste' ? 'active' : ''}">
+            <textarea class="paste-textarea" id="${SIDEBAR_ID}-paste-textarea" placeholder="Paste your HTML/CSS/JS code here...">${settings.pasteContent}</textarea>
+            <button class="render-btn" id="${SIDEBAR_ID}-render-btn">Render</button>
+          </div>
+        </div>
       </div>
     </div>
   `;
   $('body').append(html);
 
   $(`#${SIDEBAR_ID}-close`).on('click', () => toggleSidebar(false));
+
+  // Mode toggle functionality
+  $(`.mode-option`).on('click', function () {
+    const selectedMode = $(this).data('mode');
+    switchMode(selectedMode);
+  });
+
+  // URL mode functionality
   $(`#${SIDEBAR_ID}-load-btn`).on('click', () => {
     const url = ($(`#${SIDEBAR_ID}-url-input`).val() as string).trim();
     if (url) {
@@ -171,13 +278,30 @@ function injectHTML(): void {
     }
   });
 
-  // Handle Enter key in input
   $(`#${SIDEBAR_ID}-url-input`).on('keypress', e => {
     if (e.which === 13) {
       const url = ($(`#${SIDEBAR_ID}-url-input`).val() as string).trim();
       if (url) updateUrl(url);
     }
   });
+
+  // Paste mode functionality
+  $(`#${SIDEBAR_ID}-render-btn`).on('click', () => {
+    const code = $(`#${SIDEBAR_ID}-paste-textarea`).val() as string;
+    if (code.trim()) {
+      renderPastedCode(code);
+    }
+  });
+
+  $(`#${SIDEBAR_ID}-paste-textarea`).on('input', () => {
+    const code = $(`#${SIDEBAR_ID}-paste-textarea`).val() as string;
+    saveSettings({ ...getSettings(), pasteContent: code });
+  });
+
+  // Initialize based on current mode
+  if (mode === 'paste' && settings.pasteContent) {
+    renderPastedCode(settings.pasteContent);
+  }
 }
 
 function updateUrl(url: string) {
@@ -200,6 +324,74 @@ function updateUrl(url: string) {
     toastr.success('URL updated and loaded');
   } catch (e) {
     toastr.error('Invalid URL format');
+  }
+}
+
+function switchMode(newMode: 'url' | 'paste') {
+  const settings = getSettings();
+  saveSettings({ ...settings, mode: newMode });
+
+  // Update UI
+  $('.mode-option').removeClass('active');
+  $(`.mode-option[data-mode="${newMode}"]`).addClass('active');
+
+  $('.url-container').toggleClass('active', newMode === 'url');
+  $('.paste-container').toggleClass('active', newMode === 'paste');
+
+  toastr.info(`Switched to ${newMode} mode`);
+}
+
+function renderPastedCode(code: string) {
+  try {
+    // Extract HTML, CSS, and JS from the pasted code
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(code, 'text/html');
+
+    // Get the body content (remove outer body tags if present)
+    let htmlContent = doc.body.innerHTML;
+    if (!htmlContent.trim()) {
+      // If no body content, use the whole document
+      htmlContent = doc.documentElement.outerHTML;
+    }
+
+    // Extract styles from style tags
+    const styles = Array.from(doc.querySelectorAll('style'))
+      .map(style => style.textContent)
+      .join('\n');
+
+    // Extract scripts from script tags
+    const scripts = Array.from(doc.querySelectorAll('script'))
+      .map(script => script.textContent)
+      .join('\n');
+
+    // Create a complete HTML document
+    const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>${styles}</style>
+</head>
+<body>
+  ${htmlContent}
+  <script>${scripts}</script>
+</body>
+</html>`;
+
+    // Create a blob URL from the HTML content
+    const blob = new Blob([fullHtml], { type: 'text/html' });
+    const blobUrl = URL.createObjectURL(blob);
+
+    // Load the blob URL into the iframe
+    $(`#${SIDEBAR_ID}-iframe`).attr('src', blobUrl);
+
+    // Save the pasted content
+    const settings = getSettings();
+    saveSettings({ ...settings, pasteContent: code });
+
+    toastr.success('Code rendered successfully');
+  } catch (error) {
+    console.error('Failed to render pasted code:', error);
+    toastr.error('Failed to render code: ' + (error instanceof Error ? error.message : String(error)));
   }
 }
 
