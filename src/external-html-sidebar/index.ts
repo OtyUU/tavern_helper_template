@@ -539,23 +539,148 @@ function toggleSidebar(show?: boolean) {
   $(`#${SIDEBAR_ID}`).toggleClass('visible', sidebarVisible);
 }
 
+// Utility functions for safe button handling
+function safeReplaceScriptButtons(
+  buttons: Array<{ name: string; visible: boolean; onclick?: () => void }>,
+  fallbackAction?: () => void,
+): boolean {
+  if (typeof (window as any).replaceScriptButtons === 'function') {
+    try {
+      (window as any).replaceScriptButtons(buttons);
+      console.log('[External HTML Sidebar] Script buttons replaced:', buttons.map(b => b.name).join(', '));
+      return true;
+    } catch (error) {
+      console.error('[External HTML Sidebar] replaceScriptButtons error:', error);
+      if (fallbackAction) {
+        console.log('[External HTML Sidebar] Executing fallback action');
+        fallbackAction();
+      }
+      return false;
+    }
+  }
+
+  console.warn('[External HTML Sidebar] replaceScriptButtons not available');
+  if (fallbackAction) {
+    console.log('[External HTML Sidebar] Executing fallback action');
+    fallbackAction();
+  }
+  return false;
+}
+
+function safeEventOn(eventName: string, handler: () => void, fallbackAction?: () => void): boolean {
+  if (typeof (window as any).eventOn === 'function') {
+    try {
+      (window as any).eventOn(eventName, handler);
+      console.log('[External HTML Sidebar] Event handler registered:', eventName);
+      return true;
+    } catch (error) {
+      console.error('[External HTML Sidebar] eventOn error:', error);
+      if (fallbackAction) {
+        console.log('[External HTML Sidebar] Executing fallback action');
+        fallbackAction();
+      }
+      return false;
+    }
+  }
+
+  console.warn('[External HTML Sidebar] eventOn not available');
+  if (fallbackAction) {
+    console.log('[External HTML Sidebar] Executing fallback action');
+    fallbackAction();
+  }
+  return false;
+}
+
+function safeGetButtonEvent(buttonName: string, fallbackEventName?: string): string | null {
+  if (typeof (window as any).getButtonEvent === 'function') {
+    try {
+      const eventName = (window as any).getButtonEvent(buttonName);
+      console.log('[External HTML Sidebar] Button event retrieved:', buttonName, '->', eventName);
+      return eventName;
+    } catch (error) {
+      console.error('[External HTML Sidebar] getButtonEvent error:', error);
+      return fallbackEventName || null;
+    }
+  }
+
+  console.warn('[External HTML Sidebar] getButtonEvent not available');
+  return fallbackEventName || null;
+}
+
+// Check dependencies for debugging
+function checkDependencies(): Record<string, boolean> {
+  const dependencies = ['jQuery', 'replaceScriptButtons', 'eventOn', 'getButtonEvent'];
+  const results: Record<string, boolean> = {};
+  const missing: string[] = [];
+
+  for (const dep of dependencies) {
+    let available = false;
+    switch (dep) {
+      case 'jQuery':
+        available = typeof $ !== 'undefined';
+        break;
+      case 'replaceScriptButtons':
+        available = typeof (window as any).replaceScriptButtons === 'function';
+        break;
+      case 'eventOn':
+        available = typeof (window as any).eventOn === 'function';
+        break;
+      case 'getButtonEvent':
+        available = typeof (window as any).getButtonEvent === 'function';
+        break;
+    }
+
+    results[dep] = available;
+    if (!available) missing.push(dep);
+  }
+
+  if (missing.length > 0) {
+    console.warn('[External HTML Sidebar] Missing dependencies:', missing.join(', '));
+  } else {
+    console.log('[External HTML Sidebar] All dependencies available');
+  }
+
+  return results;
+}
+
 // Initialization
 $(() => {
+  console.log('[External HTML Sidebar] Script loading...');
+
+  // Check dependencies for debugging
+  checkDependencies();
+
   installHostBridge();
   injectCSS();
   injectHTML();
 
   const buttonName = '🌐 External Interface';
 
-  // Register button in Tavern Helper
-  if (typeof replaceScriptButtons === 'function') {
-    replaceScriptButtons([{ name: buttonName, visible: true }]);
-  }
+  // Register button in Tavern Helper with fallback
+  safeReplaceScriptButtons([{ name: buttonName, visible: true }], () => {
+    // Fallback: try to add button manually if replaceScriptButtons fails
+    console.warn('[External HTML Sidebar] Using fallback button placement');
+    const button = $('<button>').text('🌐 External Interface').addClass('script-button');
+    button.on('click', () => toggleSidebar());
+    $('#scriptButtons').append(button);
+  });
 
-  // Listen for button click
-  if (typeof getButtonEvent === 'function') {
-    const eventName = getButtonEvent(buttonName);
-    eventOn(eventName, () => toggleSidebar());
+  // Listen for button click with fallback
+  const buttonEvent = safeGetButtonEvent(buttonName, 'scriptButton:click:external_interface');
+  if (buttonEvent) {
+    safeEventOn(
+      buttonEvent,
+      () => toggleSidebar(),
+      () => {
+        // Fallback: direct click handler
+        console.warn('[External HTML Sidebar] Using fallback button click handler');
+        $('button:contains("🌐 External Interface")').on('click', () => {
+          toggleSidebar();
+        });
+      },
+    );
+  } else {
+    console.warn('[External HTML Sidebar] Could not get button event name');
   }
 
   // Handle global escape to close
@@ -564,10 +689,14 @@ $(() => {
       toggleSidebar(false);
     }
   });
+
+  console.log('[External HTML Sidebar] Script loaded successfully');
 });
 
 // Cleanup
 $(window).on('pagehide', () => {
+  console.log('[External HTML Sidebar] Script unloading...');
+
   $(`#${SIDEBAR_ID}`).remove();
   deteleportStyle();
 
@@ -581,4 +710,6 @@ $(window).on('pagehide', () => {
   } catch {
     // ignore
   }
+
+  console.log('[External HTML Sidebar] Script unloaded');
 });
