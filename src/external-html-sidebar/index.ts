@@ -1,6 +1,7 @@
 import { deteleportStyle, teleportStyle } from '../util/script';
 import jquerySource from 'jquery/dist/jquery.min.js?raw';
 import lodashSource from 'lodash/lodash.min.js?raw';
+import { z } from 'zod';
 
 const SIDEBAR_ID = 'tavern-helper-external-html-sidebar';
 const SIDEBAR_WIDTH = '500px';
