@@ -1,0 +1,1127 @@
+<template>
+  <section class="renpy-player">
+    <!-- Outer wrapper: fills panel width, locks height from settings -->
+    <div class="renpy-player__stage-wrap" :style="stageWrapStyle">
+      <!-- Fixed 16:9 viewport: always stageHeight px × (stageHeight×16/9) px -->
+      <div class="renpy-player__stage" :style="stageStyle">
+        <div class="renpy-player__scene-layer" :class="cameraAnimationClass">
+          <!-- Background image fills the fixed 16:9 viewport -->
+          <SmartImage
+            v-if="currentFrame?.background?.candidates?.length"
+            class="renpy-player__background"
+            :style="backgroundStyle"
+            :candidates="currentFrame.background.candidates"
+            :alt="currentFrame.background.description"
+            :swap-duration-ms="currentBackgroundSwapDurationMs"
+          />
+
+          <div class="renpy-player__gradient"></div>
+
+          <div class="renpy-player__sprite-layer">
+            <div
+              v-for="sprite in renderedSprites"
+              :key="sprite.renderKey"
+              class="renpy-player__sprite-shell"
+              :style="sprite.shellStyle"
+            >
+              <SmartImage
+                class="renpy-player__sprite"
+                :class="sprite.animationClass"
+                :style="spriteStyle"
+                :candidates="sprite.asset?.candidates ?? []"
+                :alt="sprite.asset?.description ?? sprite.id"
+                :swap-duration-ms="sprite.swapDurationMs"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div
+          v-if="activeStageTransition?.fromFrame"
+          :key="activeStageTransition.key"
+          class="renpy-player__transition-layer"
+          :class="transitionLayerClass"
+          :style="transitionLayerStyle"
+        >
+          <div class="renpy-player__transition-old">
+            <SmartImage
+              v-if="activeStageTransition.fromFrame.background?.candidates?.length"
+              class="renpy-player__background"
+              :style="transitionBackgroundStyle"
+              :candidates="activeStageTransition.fromFrame.background.candidates"
+              :alt="activeStageTransition.fromFrame.background.description"
+              :swap-duration-ms="0"
+            />
+
+            <div class="renpy-player__gradient"></div>
+
+            <div class="renpy-player__sprite-layer">
+              <div
+                v-for="sprite in transitionRenderedSprites"
+                :key="sprite.renderKey"
+                class="renpy-player__sprite-shell"
+                :style="sprite.shellStyle"
+              >
+                <SmartImage
+                  class="renpy-player__sprite"
+                  :style="transitionSpriteStyle"
+                  :candidates="sprite.asset?.candidates ?? []"
+                  :alt="sprite.asset?.description ?? sprite.id"
+                  :swap-duration-ms="0"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div v-if="activeStageTransition.name === 'fade'" class="renpy-player__transition-blackout"></div>
+        </div>
+
+        <div class="renpy-player__viewport">
+          <div v-if="!currentFrame" class="renpy-player__empty-state">
+            <p>Select a chat message containing a Ren'Py-like block to preview it here.</p>
+            <p>
+              The parser currently understands <code>scene living_room night</code>, <code>show chinami base neutral</code>,
+              dialogue lines like <code>c "Hi!!"</code>, and transition statements like <code>with dissolve</code>.
+            </p>
+          </div>
+
+          <div v-else class="renpy-player__dialogue">
+            <div class="renpy-player__speaker">{{ currentFrame.speaker ?? 'Narrator' }}</div>
+            <div class="renpy-player__text">{{ currentFrame.text ?? 'No dialogue on this frame.' }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="renpy-player__footer">
+      <!-- Left: transport controls -->
+      <div class="renpy-player__transport">
+        <button
+          class="vn-btn" type="button" title="Restart"
+          :disabled="!frames.length || frameIndex <= 0"
+          @click="jumpToStart"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+        </button>
+        <button
+          class="vn-btn" type="button" title="Previous"
+          :disabled="!frames.length || frameIndex <= 0"
+          @click="stepBackward"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+        </button>
+        <button
+          class="vn-btn vn-btn--autoplay" type="button"
+          :title="isAutoplaying ? 'Pause' : 'Autoplay'"
+          :class="{ 'vn-btn--active': isAutoplaying }"
+          :disabled="frames.length <= 1"
+          @click="toggleAutoplay"
+        >
+          <svg v-if="isAutoplaying" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg>
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          <span>{{ isAutoplaying ? 'Pause' : 'Play' }}</span>
+        </button>
+        <button
+          class="vn-btn" type="button" title="Next"
+          :disabled="!frames.length || frameIndex >= frames.length - 1"
+          @click="stepForward"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+        </button>
+      </div>
+
+      <!-- Center: status pills -->
+      <div class="renpy-player__status">
+        <span v-if="currentMessage" class="vn-pill">Msg {{ currentMessage.message_id }}</span>
+        <span v-else class="vn-pill">No script</span>
+        <span v-if="frames.length" class="vn-pill">{{ frameIndex + 1 }}/{{ frames.length }}</span>
+        <span v-if="settings.followLatestPlayable" class="vn-pill vn-pill--auto">Auto</span>
+      </div>
+
+      <!-- Right: source actions -->
+      <div class="renpy-player__actions">
+        <button class="vn-btn" type="button" title="Jump to latest script" @click="useLatestPlayable">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18z"/></svg>
+          <span>Latest</span>
+        </button>
+        <button
+          class="vn-btn" type="button"
+          :class="{ 'vn-btn--active': captureMode }"
+          :title="captureMode ? 'Click a chat message…' : 'Pick message from chat'"
+          @click="toggleCaptureMode"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
+          <span>{{ captureMode ? 'Click chat…' : 'Pick' }}</span>
+        </button>
+        <label class="renpy-player__input-group" title="Jump to message ID">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="opacity:.6"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+          <input
+            v-model.number="manualMessageId"
+            class="text_pole renpy-player__msg-input"
+            type="number" min="0" :max="maxMessageId"
+            @change="applyManualMessageId"
+          />
+        </label>
+      </div>
+    </div>
+
+    <details class="renpy-player__diagnostics">
+      <summary>Diagnostics</summary>
+      <div class="renpy-player__diagnostics-grid">
+        <p><strong>Source:</strong> {{ parsedScript.source }}</p>
+        <p><strong>Max message id:</strong> {{ maxMessageId }}</p>
+        <p><strong>Camera:</strong> {{ cameraDiagnosticsLabel }}</p>
+        <p><strong>Transition:</strong> {{ currentFrame?.transition?.name ?? 'none' }}</p>
+        <template v-for="sprite in currentFrame?.sprites" :key="sprite.id">
+          <p><strong>Sprite «{{ sprite.id }}» candidates:</strong></p>
+          <ul style="margin:0; padding-left:1rem; font-size:0.75rem;">
+            <li v-for="c in sprite.asset?.candidates" :key="c">{{ c }}</li>
+            <li v-if="!sprite.asset?.candidates?.length">None</li>
+          </ul>
+        </template>
+        <p v-if="!currentFrame?.sprites?.length"><strong>Sprites:</strong> None</p>
+        <p><strong>Background candidates:</strong></p>
+        <ul style="margin:0; padding-left:1rem; font-size:0.75rem;">
+          <li v-for="c in currentFrame?.background?.candidates" :key="c">{{ c }}</li>
+          <li v-if="!currentFrame?.background?.candidates?.length">None</li>
+        </ul>
+        <p v-if="speakerAliasesError"><strong>Speaker alias JSON:</strong> {{ speakerAliasesError }}</p>
+        <p v-if="characterFolderAliasesError"><strong>Folder alias JSON:</strong> {{ characterFolderAliasesError }}</p>
+        <p v-if="characterSpriteConfigError"><strong>Character config JSON:</strong> {{ characterSpriteConfigError }}</p>
+      </div>
+    </details>
+  </section>
+</template>
+
+<script setup lang="ts">
+import { storeToRefs } from 'pinia';
+import { buildFrames, getInitialState, parseScriptFromMessage } from './parser';
+import { useRenpyPlayerSettingsStore } from './settings';
+import SmartImage from './SmartImage.vue';
+import type { CameraTransform, PlayerFrame, TransitionName } from './types';
+
+type StageTransitionState = {
+  key: number;
+  name: TransitionName;
+  fromFrame: PlayerFrame;
+  entered: boolean;
+  phase?: 'out' | 'in';
+};
+
+const settingsStore = useRenpyPlayerSettingsStore();
+const {
+  settings,
+  assetExtensions,
+  globalPoseTokens,
+  speakerAliases,
+  speakerAliasesError,
+  characterFolderAliases,
+  characterFolderAliasesError,
+  characterSpriteConfig,
+  characterSpriteConfigError,
+} = storeToRefs(settingsStore);
+
+const currentMessage = ref<ChatMessage | null>(null);
+const historyTrigger = ref(0);
+const captureMode = ref(false);
+const frameIndex = ref(0);
+const isAutoplaying = ref(false);
+const manualMessageId = ref<number | null>(settings.value.preferredMessageId);
+const autoplayHandle = ref<number | null>(null);
+
+const maxMessageId = computed(() => getLastMessageId());
+
+const parsedScript = computed(() => parseScriptFromMessage(currentMessage.value?.message ?? ''));
+
+const frames = computed(() => {
+  void historyTrigger.value; // ensure reactivity when events fire
+
+  const history: string[] = [];
+  const currentId = currentMessage.value?.message_id;
+  if (currentId != null && !Number.isNaN(currentId)) {
+    for (let id = currentId - 1; id >= 0; id -= 1) {
+      const msg = getChatMessages(id)[0];
+      if (msg && msg.message) {
+        history.push(msg.message);
+      }
+    }
+  }
+
+  const buildOptions = {
+    spriteRoot: settings.value.spriteRoot,
+    backgroundRoot: settings.value.backgroundRoot,
+    assetExtensions: assetExtensions.value,
+    speakerAliases: speakerAliases.value,
+    characterFolderAliases: characterFolderAliases.value,
+    characterSpriteConfig: characterSpriteConfig.value,
+    defaultSpriteLayout: settings.value.defaultSpriteLayout,
+    defaultPose: settings.value.defaultPose,
+    defaultExpression: settings.value.defaultExpression,
+    globalPoseTokens: globalPoseTokens.value,
+  };
+
+  const initialState = getInitialState(history, buildOptions);
+
+  return buildFrames(parsedScript.value, {
+    ...buildOptions,
+    initialState,
+  });
+});
+
+const currentFrame = computed(() => frames.value[frameIndex.value] ?? null);
+const previousFrame = ref<(typeof currentFrame.value) | null>(null);
+const activeStageTransition = ref<StageTransitionState | null>(null);
+const suppressNextStageTransition = ref(true);
+const stageTransitionKey = ref(0);
+const stageTransitionStartHandle = ref<number | null>(null);
+const stageTransitionPhaseHandle = ref<number | null>(null);
+const stageTransitionCleanupHandle = ref<number | null>(null);
+
+const stageWidth = computed(() => Math.round(settings.value.stageHeight * 16 / 9));
+
+// Outer wrapper: fills panel width, clips to stageHeight
+const stageWrapStyle = computed(() => ({
+  height: `${settings.value.stageHeight}px`,
+}));
+
+// Inner viewport: fixed 16:9, centered horizontally inside the wrapper
+const stageStyle = computed(() => ({
+  width: `${stageWidth.value}px`,
+  height: `${settings.value.stageHeight}px`,
+  '--renpy-camera-transition-ms': `${settings.value.cameraTransitionMs}ms`,
+}));
+
+function getCameraSettings(transform?: CameraTransform) {
+  if (transform === 'closeup') {
+    return {
+      backgroundScale: settings.value.closeupBackgroundScale,
+      spriteScale: settings.value.closeupSpriteScale,
+      spriteY: settings.value.closeupSpriteY,
+    };
+  }
+
+  if (transform === 'medium') {
+    return {
+      backgroundScale: settings.value.mediumBackgroundScale,
+      spriteScale: settings.value.mediumSpriteScale,
+      spriteY: settings.value.mediumSpriteY,
+    };
+  }
+
+  return {
+    backgroundScale: settings.value.defaultBackgroundScale,
+    spriteScale: settings.value.defaultSpriteScale,
+    spriteY: settings.value.defaultSpriteY,
+  };
+}
+
+function getBackgroundStyle(transform?: CameraTransform) {
+  const camera = getCameraSettings(transform);
+  return {
+    transform: `scale(${camera.backgroundScale})`,
+    transformOrigin: 'center center',
+    transition: 'transform var(--renpy-camera-transition-ms) ease',
+  };
+}
+
+function getSpriteStyle(transform?: CameraTransform) {
+  const camera = getCameraSettings(transform);
+  return {
+    '--sprite-scale': camera.spriteScale.toString(),
+    '--sprite-y': `${camera.spriteY}%`,
+  };
+}
+
+const backgroundStyle = computed(() => getBackgroundStyle(currentFrame.value?.cameraTransform));
+const transitionBackgroundStyle = computed(() => getBackgroundStyle(activeStageTransition.value?.fromFrame.cameraTransform));
+const spriteStyle = computed(() => getSpriteStyle(currentFrame.value?.cameraTransform));
+const transitionSpriteStyle = computed(() => getSpriteStyle(activeStageTransition.value?.fromFrame.cameraTransform));
+
+const cameraAnimationClass = computed(() => getCameraAnimationClass(currentFrame.value?.cameraAnimations));
+const currentBackgroundSwapDurationMs = computed(() => currentFrame.value?.transition ? 0 : getBackgroundSwapDuration());
+
+const cameraDiagnosticsLabel = computed(() => {
+  const parts = [currentFrame.value?.cameraTransform ?? 'default', ...(currentFrame.value?.cameraAnimations ?? [])];
+  return parts.join(', ');
+});
+
+const renderedSprites = computed(() => mapFrameSprites(currentFrame.value, previousFrame.value));
+const transitionRenderedSprites = computed(() => mapFrameSprites(activeStageTransition.value?.fromFrame ?? null, null, true));
+const transitionLayerClass = computed(() => {
+  const transition = activeStageTransition.value;
+  if (!transition) {
+    return undefined;
+  }
+
+  return {
+    [`renpy-player__transition-layer--${transition.name}`]: true,
+    'renpy-player__transition-layer--entered': transition.entered,
+    'renpy-player__transition-layer--fade-in': transition.phase === 'in',
+  };
+});
+const transitionLayerStyle = computed(() => {
+  const transition = activeStageTransition.value;
+  if (!transition) {
+    return {};
+  }
+
+  return {
+    '--renpy-stage-transition-ms': `${settings.value.dissolveTransitionMs}ms`,
+    '--renpy-fade-out-ms': `${settings.value.fadeOutTransitionMs}ms`,
+    '--renpy-fade-in-ms': `${settings.value.fadeInTransitionMs}ms`,
+  };
+});
+
+function getSpriteAnchorX(position: 'left' | 'center' | 'right'): number {
+  const center = settings.value.spriteCenterX;
+  const spacing = settings.value.spriteSideSpacing;
+  if (position === 'left') {
+    return Math.max(0, center - spacing);
+  }
+  if (position === 'right') {
+    return Math.min(100, center + spacing);
+  }
+  return center;
+}
+
+function getSpriteShellStyle(position: 'left' | 'center' | 'right') {
+  return {
+    left: `${getSpriteAnchorX(position)}%`,
+  };
+}
+
+function getBackgroundSwapDuration(): number {
+  if (currentFrame.value?.transition) {
+    return 0;
+  }
+
+  const previousBackground = previousFrame.value?.background;
+  const nextBackground = currentFrame.value?.background;
+  if (!previousBackground || !nextBackground || previousBackground.description === nextBackground.description) {
+    return 0;
+  }
+
+  return settings.value.poseChangeMs;
+}
+
+function getSpriteSwapDuration(
+  sprite: NonNullable<PlayerFrame['sprites'][number]>,
+  baselineFrame: PlayerFrame | null = previousFrame.value,
+): number {
+  if (currentFrame.value?.transition) {
+    return 0;
+  }
+
+  const previousSprite = baselineFrame?.sprites.find(candidate => candidate.id === sprite.id);
+  if (!previousSprite?.asset || !sprite.asset || previousSprite.asset.description === sprite.asset.description) {
+    return 0;
+  }
+
+  const isPoseChange =
+    previousSprite.pose !== sprite.pose ||
+    previousSprite.outfit !== sprite.outfit;
+
+  if (isPoseChange) {
+    return settings.value.poseChangeMs;
+  }
+
+  const isExpressionChange =
+    previousSprite.expression !== sprite.expression ||
+    previousSprite.blush !== sprite.blush;
+
+  if (isExpressionChange) {
+    return settings.value.expressionChangeMs;
+  }
+
+  return settings.value.poseChangeMs;
+}
+
+function mapFrameSprites(
+  frame: PlayerFrame | null,
+  baselineFrame: PlayerFrame | null,
+  disableSwaps = false,
+) {
+  return (frame?.sprites ?? []).map(sprite => ({
+    ...sprite,
+    renderKey: disableSwaps ? `transition-${activeStageTransition.value?.key ?? 0}-${sprite.id}` : sprite.id,
+    animationClass: disableSwaps ? undefined : getSpriteAnimationClass(sprite.animations),
+    shellStyle: getSpriteShellStyle(sprite.position),
+    swapDurationMs: disableSwaps ? 0 : getSpriteSwapDuration(sprite, baselineFrame),
+  }));
+}
+
+function getSpriteAnimationClass(animations?: string[]): string | undefined {
+  if (!animations?.length) {
+    return undefined;
+  }
+  if (animations.includes('shake')) {
+    return 'renpy-player__sprite--shake';
+  }
+  if (animations.includes('bounce')) {
+    return 'renpy-player__sprite--bounce';
+  }
+  if (animations.includes('pulse')) {
+    return 'renpy-player__sprite--pulse';
+  }
+  return undefined;
+}
+
+function getCameraAnimationClass(animations?: string[]): string | undefined {
+  if (!animations?.length) {
+    return undefined;
+  }
+  if (animations.includes('shake')) {
+    return 'renpy-player__scene-layer--shake';
+  }
+  return undefined;
+}
+
+function getFrameVisualSignature(frame: PlayerFrame | null): string {
+  if (!frame) {
+    return 'none';
+  }
+
+  return JSON.stringify({
+    background: frame.background?.description ?? null,
+    cameraTransform: frame.cameraTransform ?? null,
+    sprites: frame.sprites.map(sprite => ({
+      id: sprite.id,
+      position: sprite.position,
+      asset: sprite.asset?.description ?? null,
+      outfit: sprite.outfit ?? null,
+      pose: sprite.pose ?? null,
+      expression: sprite.expression ?? null,
+      blush: sprite.blush ?? false,
+    })),
+  });
+}
+
+function clearStageTransitionTimers() {
+  if (stageTransitionStartHandle.value !== null) {
+    window.cancelAnimationFrame(stageTransitionStartHandle.value);
+    stageTransitionStartHandle.value = null;
+  }
+  if (stageTransitionPhaseHandle.value !== null) {
+    window.clearTimeout(stageTransitionPhaseHandle.value);
+    stageTransitionPhaseHandle.value = null;
+  }
+  if (stageTransitionCleanupHandle.value !== null) {
+    window.clearTimeout(stageTransitionCleanupHandle.value);
+    stageTransitionCleanupHandle.value = null;
+  }
+}
+
+function stopStageTransition() {
+  clearStageTransitionTimers();
+  activeStageTransition.value = null;
+}
+
+function startStageTransition(name: TransitionName, fromFrame: PlayerFrame) {
+  stopStageTransition();
+
+  const key = ++stageTransitionKey.value;
+  activeStageTransition.value = {
+    key,
+    name,
+    fromFrame,
+    entered: false,
+    phase: name === 'fade' ? 'out' : undefined,
+  };
+
+  stageTransitionStartHandle.value = window.requestAnimationFrame(() => {
+    if (activeStageTransition.value?.key !== key) {
+      return;
+    }
+
+    activeStageTransition.value = {
+      ...activeStageTransition.value,
+      entered: true,
+    };
+    stageTransitionStartHandle.value = null;
+
+    if (name === 'dissolve') {
+      stageTransitionCleanupHandle.value = window.setTimeout(() => {
+        if (activeStageTransition.value?.key === key) {
+          activeStageTransition.value = null;
+        }
+        stageTransitionCleanupHandle.value = null;
+      }, settings.value.dissolveTransitionMs);
+      return;
+    }
+
+    stageTransitionPhaseHandle.value = window.setTimeout(() => {
+      if (activeStageTransition.value?.key !== key) {
+        return;
+      }
+
+      activeStageTransition.value = {
+        ...activeStageTransition.value,
+        phase: 'in',
+      };
+      stageTransitionPhaseHandle.value = null;
+
+      stageTransitionCleanupHandle.value = window.setTimeout(() => {
+        if (activeStageTransition.value?.key === key) {
+          activeStageTransition.value = null;
+        }
+        stageTransitionCleanupHandle.value = null;
+      }, settings.value.fadeInTransitionMs);
+    }, settings.value.fadeOutTransitionMs);
+  });
+}
+
+function findLatestPlayableMessageId(): number | null {
+  for (let messageId = getLastMessageId(); messageId >= 0; messageId -= 1) {
+    const message = getChatMessages(messageId)[0];
+    if (message && parseScriptFromMessage(message.message).commands.length > 0) {
+      return messageId;
+    }
+  }
+  return null;
+}
+
+function stopAutoplay() {
+  if (autoplayHandle.value !== null) {
+    window.clearInterval(autoplayHandle.value);
+    autoplayHandle.value = null;
+  }
+  isAutoplaying.value = false;
+}
+
+function syncMessageSelection() {
+  suppressNextStageTransition.value = true;
+  stopStageTransition();
+  historyTrigger.value++;
+  const messageId = settings.value.followLatestPlayable ? findLatestPlayableMessageId() : settings.value.preferredMessageId;
+  settings.value.preferredMessageId = messageId;
+  manualMessageId.value = messageId;
+  currentMessage.value = messageId === null ? null : getChatMessages(messageId)[0] ?? null;
+}
+
+function useLatestPlayable() {
+  settings.value.followLatestPlayable = true;
+  syncMessageSelection();
+  frameIndex.value = 0;
+}
+
+function selectMessage(messageId: number) {
+  settings.value.followLatestPlayable = false;
+  settings.value.preferredMessageId = messageId;
+  captureMode.value = false;
+  syncMessageSelection();
+  frameIndex.value = 0;
+}
+
+function applyManualMessageId() {
+  if (manualMessageId.value === null || Number.isNaN(manualMessageId.value)) {
+    return;
+  }
+  selectMessage(manualMessageId.value);
+}
+
+function toggleCaptureMode() {
+  captureMode.value = !captureMode.value;
+}
+
+function jumpToStart() {
+  frameIndex.value = 0;
+}
+
+function stepBackward() {
+  frameIndex.value = Math.max(0, frameIndex.value - 1);
+}
+
+function stepForward() {
+  frameIndex.value = Math.min(frames.value.length - 1, frameIndex.value + 1);
+}
+
+function toggleAutoplay() {
+  if (isAutoplaying.value) {
+    stopAutoplay();
+    return;
+  }
+  if (frames.value.length <= 1) {
+    return;
+  }
+
+  isAutoplaying.value = true;
+  autoplayHandle.value = window.setInterval(() => {
+    if (frameIndex.value >= frames.value.length - 1) {
+      stopAutoplay();
+      return;
+    }
+    stepForward();
+  }, settings.value.autoPlayDelayMs);
+}
+
+watch(
+  () => [currentMessage.value?.message_id ?? null, currentMessage.value?.message ?? ''],
+  (nextSelection, previousSelection) => {
+    if (!previousSelection) {
+      return;
+    }
+
+    const [nextMessageId, nextMessageText] = nextSelection;
+    const [previousMessageId, previousMessageText] = previousSelection;
+    if (nextMessageId !== previousMessageId || nextMessageText !== previousMessageText) {
+      suppressNextStageTransition.value = true;
+      stopStageTransition();
+      frameIndex.value = 0;
+    }
+  },
+);
+
+watch(
+  frames,
+  nextFrames => {
+    frameIndex.value = nextFrames.length === 0 ? 0 : Math.min(frameIndex.value, nextFrames.length - 1);
+    if (nextFrames.length <= 1) {
+      stopAutoplay();
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  currentFrame,
+  (next, previous) => {
+    previousFrame.value = previous ?? null;
+
+    if (!next || !previous || suppressNextStageTransition.value) {
+      suppressNextStageTransition.value = false;
+      stopStageTransition();
+      return;
+    }
+
+    if (!next.transition || getFrameVisualSignature(next) === getFrameVisualSignature(previous)) {
+      stopStageTransition();
+      return;
+    }
+
+    startStageTransition(next.transition.name, previous);
+  },
+);
+
+watch(
+  () => settings.value.autoPlayDelayMs,
+  () => {
+    if (isAutoplaying.value) {
+      stopAutoplay();
+      toggleAutoplay();
+    }
+  },
+);
+
+onMounted(() => {
+  syncMessageSelection();
+
+  const stopList = [
+    eventOn(tavern_events.CHAT_CHANGED, syncMessageSelection).stop,
+    eventOn(tavern_events.MESSAGE_RECEIVED, syncMessageSelection).stop,
+    eventOn(tavern_events.MESSAGE_EDITED, syncMessageSelection).stop,
+    eventOn(tavern_events.MESSAGE_UPDATED, syncMessageSelection).stop,
+    eventOn(tavern_events.MESSAGE_DELETED, syncMessageSelection).stop,
+    eventOn(tavern_events.MESSAGE_SWIPED, syncMessageSelection).stop,
+    eventOn(tavern_events.MORE_MESSAGES_LOADED, syncMessageSelection).stop,
+  ];
+
+  const handleChatClick = (event: JQuery.ClickEvent) => {
+    if (!captureMode.value) {
+      return;
+    }
+    const $message = $(event.target as HTMLElement).closest('.mes');
+    const messageId = Number($message.attr('mesid') ?? 'NaN');
+    if (!Number.isNaN(messageId)) {
+      selectMessage(messageId);
+    }
+  };
+
+  $(document).on('click', handleChatClick);
+
+  onBeforeUnmount(() => {
+    stopList.forEach(stop => stop());
+    $(document).off('click', handleChatClick);
+    stopStageTransition();
+    stopAutoplay();
+  });
+});
+</script>
+
+<style lang="scss" scoped>
+/* ─── Container ─────────────────────────────────────────────────────────── */
+.renpy-player {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 1rem;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 65%, transparent);
+  border-radius: 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, transparent), transparent 55%),
+    color-mix(in srgb, var(--black30a) 55%, var(--white30a));
+  backdrop-filter: blur(18px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.32);
+}
+
+/* ─── Stage wrapper: fills panel, clips to stageHeight, shows black bars ── */
+.renpy-player__stage-wrap {
+  position: relative;
+  width: 100%;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: #000; /* letterbox / pillarbox bars */
+  display: flex;
+  align-items: center;       /* vertical centering (letterbox) */
+  justify-content: center;   /* horizontal centering (pillarbox) */
+}
+
+/* ─── Fixed 16:9 VN viewport ─────────────────────────────────────────────── */
+.renpy-player__stage {
+  /* width & height come from stageStyle computed prop (JS) */
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.renpy-player__scene-layer,
+.renpy-player__transition-layer,
+.renpy-player__transition-old,
+.renpy-player__transition-blackout,
+.renpy-player__background,
+.renpy-player__gradient,
+.renpy-player__sprite-layer,
+.renpy-player__viewport {
+  position: absolute;
+  inset: 0;
+}
+
+.renpy-player__scene-layer {
+  z-index: 1;
+}
+
+.renpy-player__transition-layer {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.renpy-player__background {
+  /* Fill the fixed viewport exactly — no bleed, no scaling surprises */
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ─── Inner viewport fills the fixed stage ───────────────────────────────── */
+.renpy-player__viewport {
+  z-index: 3;
+}
+
+.renpy-player__sprite-layer {
+  z-index: 1;
+}
+
+.renpy-player__gradient {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.04) 0%, rgba(0, 0, 0, 0.38) 55%, rgba(0, 0, 0, 0.86) 100%),
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.10), transparent 50%);
+}
+
+.renpy-player__transition-old {
+  opacity: 1;
+}
+
+.renpy-player__transition-layer--dissolve .renpy-player__transition-old {
+  transition: opacity var(--renpy-stage-transition-ms) ease;
+}
+
+.renpy-player__transition-layer--dissolve.renpy-player__transition-layer--entered .renpy-player__transition-old {
+  opacity: 0;
+}
+
+.renpy-player__transition-blackout {
+  background: #000;
+  opacity: 0;
+}
+
+.renpy-player__transition-layer--fade .renpy-player__transition-blackout {
+  transition: opacity var(--renpy-fade-out-ms) ease;
+}
+
+.renpy-player__transition-layer--fade.renpy-player__transition-layer--entered .renpy-player__transition-blackout {
+  opacity: 1;
+}
+
+.renpy-player__transition-layer--fade.renpy-player__transition-layer--fade-in .renpy-player__transition-blackout {
+  opacity: 0;
+  transition-duration: var(--renpy-fade-in-ms);
+}
+
+.renpy-player__transition-layer--fade.renpy-player__transition-layer--fade-in .renpy-player__transition-old {
+  opacity: 0;
+}
+
+.renpy-player__sprite-shell {
+  inset: auto auto 0 0;
+  position: absolute;
+  transform: translateX(-50%);
+  width: min(70%, 460px);
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 1;
+  transition: left var(--renpy-camera-transition-ms) ease;
+}
+
+.renpy-player__sprite {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.5));
+  --sprite-scale: 1;
+  --sprite-y: 0%;
+  transform: scale(var(--sprite-scale)) translateY(var(--sprite-y));
+  transform-origin: center bottom;
+  transition: transform var(--renpy-camera-transition-ms) ease;
+}
+
+@keyframes renpy-shake {
+  0%, 100% { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)) translateX(0); }
+  20%       { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)) translateX(-6px); }
+  40%       { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)) translateX(6px); }
+  60%       { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)) translateX(-4px); }
+  80%       { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)) translateX(4px); }
+}
+
+.renpy-player__sprite--shake {
+  animation: renpy-shake 0.45s ease-in-out 1;
+}
+
+@keyframes renpy-scene-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(5px); }
+}
+
+.renpy-player__scene-layer--shake {
+  animation: renpy-scene-shake 0.45s ease-in-out 1;
+}
+
+@keyframes renpy-bounce {
+  0%, 100% { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)); }
+  30% { transform: scale(var(--sprite-scale)) translateY(calc(var(--sprite-y) - 20px)); }
+  55% { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)); }
+  75% { transform: scale(var(--sprite-scale)) translateY(calc(var(--sprite-y) - 8px)); }
+}
+
+.renpy-player__sprite--bounce {
+  animation: renpy-bounce 0.4s ease-out 1;
+}
+
+@keyframes renpy-pulse {
+  0%, 100% { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)); }
+  50% { transform: scale(calc(var(--sprite-scale) * 1.06)) translateY(var(--sprite-y)); }
+}
+
+.renpy-player__sprite--pulse {
+  animation: renpy-pulse 0.4s ease-in-out 1;
+}
+
+/* ─── Dialogue box ──────────────────────────────────────────────────────── */
+.renpy-player__dialogue {
+  position: absolute;
+  z-index: 2;
+  right: 1rem;
+  bottom: 1rem;
+  left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(8, 11, 20, 0.82);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.renpy-player__speaker {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--SmartThemeQuoteColor) 85%, white);
+}
+
+.renpy-player__text {
+  font-size: 1rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.renpy-player__empty-state {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 0.5rem;
+  padding: 2rem;
+  text-align: center;
+  opacity: 0.7;
+}
+
+.renpy-player__empty-state p {
+  margin: 0;
+  max-width: 42rem;
+}
+
+/* ─── Footer / bottom bar ───────────────────────────────────────────────── */
+.renpy-player__footer {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 0.45rem 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
+  background: color-mix(in srgb, var(--black30a) 60%, transparent);
+  backdrop-filter: blur(10px);
+  min-height: 40px;
+}
+
+.renpy-player__transport,
+.renpy-player__actions {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+/* ─── Generic compact button ────────────────────────────────────────────── */
+.vn-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.28rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 30%, transparent);
+  color: inherit;
+  font-size: 0.78rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+  white-space: nowrap;
+
+  svg { flex-shrink: 0; }
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 55%, transparent);
+    border-color: color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
+  }
+
+  &:disabled {
+    opacity: 0.38;
+    cursor: default;
+  }
+}
+
+.vn-btn--active {
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 70%, transparent) !important;
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent) !important;
+  color: color-mix(in srgb, var(--SmartThemeQuoteColor) 90%, white);
+}
+
+/* Icon-only buttons (no <span>) get tighter padding */
+.vn-btn:not(:has(span)):not(.vn-btn--autoplay) {
+  padding: 0.28rem 0.38rem;
+}
+
+/* ─── Status pills ──────────────────────────────────────────────────────── */
+.renpy-player__status {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.vn-pill {
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  background: color-mix(in srgb, var(--SmartThemeBorderColor) 28%, transparent);
+  border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
+  white-space: nowrap;
+}
+
+.vn-pill--auto {
+  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 22%, transparent);
+  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 50%, transparent);
+  color: color-mix(in srgb, var(--SmartThemeQuoteColor) 90%, white);
+}
+
+/* ─── Msg ID input ──────────────────────────────────────────────────────── */
+.renpy-player__input-group {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+  padding: 0.18rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 45%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 20%, transparent);
+  cursor: text;
+}
+
+.renpy-player__msg-input {
+  width: 2.8rem;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 0.78rem;
+  color: inherit;
+  outline: none;
+
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    opacity: 0.5;
+  }
+}
+
+/* ─── Diagnostics ───────────────────────────────────────────────────────── */
+.renpy-player__diagnostics {
+  border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
+  padding: 0.5rem 0.75rem 0.65rem;
+  font-size: 0.82rem;
+}
+
+.renpy-player__diagnostics-grid {
+  display: grid;
+  gap: 0.4rem;
+  padding-top: 0.6rem;
+}
+
+.renpy-player__diagnostics-grid p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ─── Legacy compat ─────────────────────────────────────────────────────── */
+.menu_button--active {
+  outline: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 65%, white);
+}
+
+/* ─── Responsive ────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  /* On narrow screens: hide labels in action buttons, show only icons */
+  .renpy-player__actions .vn-btn--autoplay span,
+  .renpy-player__actions .vn-btn span {
+    display: none;
+  }
+}
+</style>

@@ -1,0 +1,2 @@
+The Ren'Py Player is a visual novel (VN) player component designed for the Tavern Helper ecosystem. It allows users to preview and play Ren'Py-style scripts directly within the chat interface of SillyTavern. The player parses simplified Ren'Py commands from chat messages and renders them as a visual novel experience.
+The player is designed to work with Tavern Helper's script system and integrates seamlessly with the chat interface.
