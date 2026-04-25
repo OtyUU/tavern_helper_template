@@ -621,6 +621,14 @@ class StageState {
     return !!(this.background || this.spriteOrder.length > 0);
   }
 
+  getBackground(): PlayerAsset | undefined {
+    return this.background;
+  }
+
+  getCameraTransform(): CameraTransform | undefined {
+    return this.cameraTransform;
+  }
+
   getBackgroundName(): string {
     return this.backgroundName;
   }
@@ -703,10 +711,10 @@ export function getInitialState(
   stage.flush();
 
   return {
-    background: stage['background'],
+    background: stage.getBackground(),
     backgroundName: stage.getBackgroundName(),
     backgroundSegment: stage.getBackgroundSegment(),
-    cameraTransform: stage['cameraTransform'],
+    cameraTransform: stage.getCameraTransform(),
     rememberedOutfits: stage.getRememberedOutfits(),
     sprites: stage.getSpritesMap(),
   };
