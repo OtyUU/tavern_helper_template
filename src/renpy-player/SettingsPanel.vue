@@ -66,7 +66,7 @@
       <section class="renpy-player-settings__section">
         <div class="renpy-player-settings__section-header">
           <h4>Animations</h4>
-          <p>Control camera movement, sprite swaps, and the built-in Ren'Py-style transitions.</p>
+          <p>Control camera movement and how quickly sprite changes dissolve.</p>
         </div>
 
         <div class="renpy-player-settings__grid">
@@ -86,24 +86,6 @@
             <label>Pose change (ms)</label>
             <input v-model.number="settings.poseChangeMs" class="text_pole" type="number" min="0" max="2000" step="10" />
             <small>Faster dissolve for big silhouette changes like new poses or outfits.</small>
-          </div>
-
-          <div class="renpy-player-settings__field">
-            <label>`with dissolve` (ms)</label>
-            <input v-model.number="settings.dissolveTransitionMs" class="text_pole" type="number" min="0" max="5000" step="10" />
-            <small>Used for explicit <code>with dissolve</code> stage transitions.</small>
-          </div>
-
-          <div class="renpy-player-settings__field">
-            <label>`fade` out (ms)</label>
-            <input v-model.number="settings.fadeOutTransitionMs" class="text_pole" type="number" min="0" max="5000" step="10" />
-            <small>How long the screen takes to fade from the old stage to black.</small>
-          </div>
-
-          <div class="renpy-player-settings__field">
-            <label>`fade` in (ms)</label>
-            <input v-model.number="settings.fadeInTransitionMs" class="text_pole" type="number" min="0" max="5000" step="10" />
-            <small>How long the screen takes to fade from black to the new stage.</small>
           </div>
         </div>
       </section>

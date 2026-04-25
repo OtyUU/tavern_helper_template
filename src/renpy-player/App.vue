@@ -12,7 +12,6 @@
             :style="backgroundStyle"
             :candidates="currentFrame.background.candidates"
             :alt="currentFrame.background.description"
-            :swap-duration-ms="currentBackgroundSwapDurationMs"
           />
 
           <div class="renpy-player__gradient"></div>
@@ -36,52 +35,12 @@
           </div>
         </div>
 
-        <div
-          v-if="activeStageTransition?.fromFrame"
-          :key="activeStageTransition.key"
-          class="renpy-player__transition-layer"
-          :class="transitionLayerClass"
-          :style="transitionLayerStyle"
-        >
-          <div class="renpy-player__transition-old">
-            <SmartImage
-              v-if="activeStageTransition.fromFrame.background?.candidates?.length"
-              class="renpy-player__background"
-              :style="transitionBackgroundStyle"
-              :candidates="activeStageTransition.fromFrame.background.candidates"
-              :alt="activeStageTransition.fromFrame.background.description"
-              :swap-duration-ms="0"
-            />
-
-            <div class="renpy-player__gradient"></div>
-
-            <div class="renpy-player__sprite-layer">
-              <div
-                v-for="sprite in transitionRenderedSprites"
-                :key="sprite.renderKey"
-                class="renpy-player__sprite-shell"
-                :style="sprite.shellStyle"
-              >
-                <SmartImage
-                  class="renpy-player__sprite"
-                  :style="transitionSpriteStyle"
-                  :candidates="sprite.asset?.candidates ?? []"
-                  :alt="sprite.asset?.description ?? sprite.id"
-                  :swap-duration-ms="0"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div v-if="activeStageTransition.name === 'fade'" class="renpy-player__transition-blackout"></div>
-        </div>
-
         <div class="renpy-player__viewport">
           <div v-if="!currentFrame" class="renpy-player__empty-state">
             <p>Select a chat message containing a Ren'Py-like block to preview it here.</p>
             <p>
               The parser currently understands <code>scene living_room night</code>, <code>show chinami base neutral</code>,
-              dialogue lines like <code>c "Hi!!"</code>, and transition statements like <code>with dissolve</code>.
+              and dialogue lines like <code>c "Hi!!"</code>.
             </p>
           </div>
 
@@ -172,7 +131,6 @@
         <p><strong>Source:</strong> {{ parsedScript.source }}</p>
         <p><strong>Max message id:</strong> {{ maxMessageId }}</p>
         <p><strong>Camera:</strong> {{ cameraDiagnosticsLabel }}</p>
-        <p><strong>Transition:</strong> {{ currentFrame?.transition?.name ?? 'none' }}</p>
         <template v-for="sprite in currentFrame?.sprites" :key="sprite.id">
           <p><strong>Sprite «{{ sprite.id }}» candidates:</strong></p>
           <ul style="margin:0; padding-left:1rem; font-size:0.75rem;">
@@ -199,15 +157,6 @@ import { storeToRefs } from 'pinia';
 import { buildFrames, getInitialState, parseScriptFromMessage } from './parser';
 import { useRenpyPlayerSettingsStore } from './settings';
 import SmartImage from './SmartImage.vue';
-import type { CameraTransform, PlayerFrame, TransitionName } from './types';
-
-type StageTransitionState = {
-  key: number;
-  name: TransitionName;
-  fromFrame: PlayerFrame;
-  entered: boolean;
-  phase?: 'out' | 'in';
-};
 
 const settingsStore = useRenpyPlayerSettingsStore();
 const {
@@ -271,12 +220,6 @@ const frames = computed(() => {
 
 const currentFrame = computed(() => frames.value[frameIndex.value] ?? null);
 const previousFrame = ref<(typeof currentFrame.value) | null>(null);
-const activeStageTransition = ref<StageTransitionState | null>(null);
-const suppressNextStageTransition = ref(true);
-const stageTransitionKey = ref(0);
-const stageTransitionStartHandle = ref<number | null>(null);
-const stageTransitionPhaseHandle = ref<number | null>(null);
-const stageTransitionCleanupHandle = ref<number | null>(null);
 
 const stageWidth = computed(() => Math.round(settings.value.stageHeight * 16 / 9));
 
@@ -292,7 +235,7 @@ const stageStyle = computed(() => ({
   '--renpy-camera-transition-ms': `${settings.value.cameraTransitionMs}ms`,
 }));
 
-function getCameraSettings(transform?: CameraTransform) {
+function getCameraSettings(transform?: 'closeup' | 'medium') {
   if (transform === 'closeup') {
     return {
       backgroundScale: settings.value.closeupBackgroundScale,
@@ -316,62 +259,39 @@ function getCameraSettings(transform?: CameraTransform) {
   };
 }
 
-function getBackgroundStyle(transform?: CameraTransform) {
-  const camera = getCameraSettings(transform);
+const backgroundStyle = computed(() => {
+  const camera = getCameraSettings(currentFrame.value?.cameraTransform);
   return {
     transform: `scale(${camera.backgroundScale})`,
     transformOrigin: 'center center',
     transition: 'transform var(--renpy-camera-transition-ms) ease',
   };
-}
+});
 
-function getSpriteStyle(transform?: CameraTransform) {
-  const camera = getCameraSettings(transform);
+const spriteStyle = computed(() => {
+  const camera = getCameraSettings(currentFrame.value?.cameraTransform);
   return {
     '--sprite-scale': camera.spriteScale.toString(),
     '--sprite-y': `${camera.spriteY}%`,
   };
-}
-
-const backgroundStyle = computed(() => getBackgroundStyle(currentFrame.value?.cameraTransform));
-const transitionBackgroundStyle = computed(() => getBackgroundStyle(activeStageTransition.value?.fromFrame.cameraTransform));
-const spriteStyle = computed(() => getSpriteStyle(currentFrame.value?.cameraTransform));
-const transitionSpriteStyle = computed(() => getSpriteStyle(activeStageTransition.value?.fromFrame.cameraTransform));
+});
 
 const cameraAnimationClass = computed(() => getCameraAnimationClass(currentFrame.value?.cameraAnimations));
-const currentBackgroundSwapDurationMs = computed(() => currentFrame.value?.transition ? 0 : getBackgroundSwapDuration());
 
 const cameraDiagnosticsLabel = computed(() => {
   const parts = [currentFrame.value?.cameraTransform ?? 'default', ...(currentFrame.value?.cameraAnimations ?? [])];
   return parts.join(', ');
 });
 
-const renderedSprites = computed(() => mapFrameSprites(currentFrame.value, previousFrame.value));
-const transitionRenderedSprites = computed(() => mapFrameSprites(activeStageTransition.value?.fromFrame ?? null, null, true));
-const transitionLayerClass = computed(() => {
-  const transition = activeStageTransition.value;
-  if (!transition) {
-    return undefined;
-  }
-
-  return {
-    [`renpy-player__transition-layer--${transition.name}`]: true,
-    'renpy-player__transition-layer--entered': transition.entered,
-    'renpy-player__transition-layer--fade-in': transition.phase === 'in',
-  };
-});
-const transitionLayerStyle = computed(() => {
-  const transition = activeStageTransition.value;
-  if (!transition) {
-    return {};
-  }
-
-  return {
-    '--renpy-stage-transition-ms': `${settings.value.dissolveTransitionMs}ms`,
-    '--renpy-fade-out-ms': `${settings.value.fadeOutTransitionMs}ms`,
-    '--renpy-fade-in-ms': `${settings.value.fadeInTransitionMs}ms`,
-  };
-});
+const renderedSprites = computed(() =>
+  (currentFrame.value?.sprites ?? []).map(sprite => ({
+    ...sprite,
+    renderKey: sprite.id,
+    animationClass: getSpriteAnimationClass(sprite.animations),
+    shellStyle: getSpriteShellStyle(sprite.position),
+    swapDurationMs: getSpriteSwapDuration(sprite),
+  })),
+);
 
 function getSpriteAnchorX(position: 'left' | 'center' | 'right'): number {
   const center = settings.value.spriteCenterX;
@@ -391,29 +311,8 @@ function getSpriteShellStyle(position: 'left' | 'center' | 'right') {
   };
 }
 
-function getBackgroundSwapDuration(): number {
-  if (currentFrame.value?.transition) {
-    return 0;
-  }
-
-  const previousBackground = previousFrame.value?.background;
-  const nextBackground = currentFrame.value?.background;
-  if (!previousBackground || !nextBackground || previousBackground.description === nextBackground.description) {
-    return 0;
-  }
-
-  return settings.value.poseChangeMs;
-}
-
-function getSpriteSwapDuration(
-  sprite: NonNullable<PlayerFrame['sprites'][number]>,
-  baselineFrame: PlayerFrame | null = previousFrame.value,
-): number {
-  if (currentFrame.value?.transition) {
-    return 0;
-  }
-
-  const previousSprite = baselineFrame?.sprites.find(candidate => candidate.id === sprite.id);
+function getSpriteSwapDuration(sprite: NonNullable<typeof currentFrame.value>['sprites'][number]): number {
+  const previousSprite = previousFrame.value?.sprites.find(candidate => candidate.id === sprite.id);
   if (!previousSprite?.asset || !sprite.asset || previousSprite.asset.description === sprite.asset.description) {
     return 0;
   }
@@ -435,20 +334,6 @@ function getSpriteSwapDuration(
   }
 
   return settings.value.poseChangeMs;
-}
-
-function mapFrameSprites(
-  frame: PlayerFrame | null,
-  baselineFrame: PlayerFrame | null,
-  disableSwaps = false,
-) {
-  return (frame?.sprites ?? []).map(sprite => ({
-    ...sprite,
-    renderKey: disableSwaps ? `transition-${activeStageTransition.value?.key ?? 0}-${sprite.id}` : sprite.id,
-    animationClass: disableSwaps ? undefined : getSpriteAnimationClass(sprite.animations),
-    shellStyle: getSpriteShellStyle(sprite.position),
-    swapDurationMs: disableSwaps ? 0 : getSpriteSwapDuration(sprite, baselineFrame),
-  }));
 }
 
 function getSpriteAnimationClass(animations?: string[]): string | undefined {
@@ -477,100 +362,6 @@ function getCameraAnimationClass(animations?: string[]): string | undefined {
   return undefined;
 }
 
-function getFrameVisualSignature(frame: PlayerFrame | null): string {
-  if (!frame) {
-    return 'none';
-  }
-
-  return JSON.stringify({
-    background: frame.background?.description ?? null,
-    cameraTransform: frame.cameraTransform ?? null,
-    sprites: frame.sprites.map(sprite => ({
-      id: sprite.id,
-      position: sprite.position,
-      asset: sprite.asset?.description ?? null,
-      outfit: sprite.outfit ?? null,
-      pose: sprite.pose ?? null,
-      expression: sprite.expression ?? null,
-      blush: sprite.blush ?? false,
-    })),
-  });
-}
-
-function clearStageTransitionTimers() {
-  if (stageTransitionStartHandle.value !== null) {
-    window.cancelAnimationFrame(stageTransitionStartHandle.value);
-    stageTransitionStartHandle.value = null;
-  }
-  if (stageTransitionPhaseHandle.value !== null) {
-    window.clearTimeout(stageTransitionPhaseHandle.value);
-    stageTransitionPhaseHandle.value = null;
-  }
-  if (stageTransitionCleanupHandle.value !== null) {
-    window.clearTimeout(stageTransitionCleanupHandle.value);
-    stageTransitionCleanupHandle.value = null;
-  }
-}
-
-function stopStageTransition() {
-  clearStageTransitionTimers();
-  activeStageTransition.value = null;
-}
-
-function startStageTransition(name: TransitionName, fromFrame: PlayerFrame) {
-  stopStageTransition();
-
-  const key = ++stageTransitionKey.value;
-  activeStageTransition.value = {
-    key,
-    name,
-    fromFrame,
-    entered: false,
-    phase: name === 'fade' ? 'out' : undefined,
-  };
-
-  stageTransitionStartHandle.value = window.requestAnimationFrame(() => {
-    if (activeStageTransition.value?.key !== key) {
-      return;
-    }
-
-    activeStageTransition.value = {
-      ...activeStageTransition.value,
-      entered: true,
-    };
-    stageTransitionStartHandle.value = null;
-
-    if (name === 'dissolve') {
-      stageTransitionCleanupHandle.value = window.setTimeout(() => {
-        if (activeStageTransition.value?.key === key) {
-          activeStageTransition.value = null;
-        }
-        stageTransitionCleanupHandle.value = null;
-      }, settings.value.dissolveTransitionMs);
-      return;
-    }
-
-    stageTransitionPhaseHandle.value = window.setTimeout(() => {
-      if (activeStageTransition.value?.key !== key) {
-        return;
-      }
-
-      activeStageTransition.value = {
-        ...activeStageTransition.value,
-        phase: 'in',
-      };
-      stageTransitionPhaseHandle.value = null;
-
-      stageTransitionCleanupHandle.value = window.setTimeout(() => {
-        if (activeStageTransition.value?.key === key) {
-          activeStageTransition.value = null;
-        }
-        stageTransitionCleanupHandle.value = null;
-      }, settings.value.fadeInTransitionMs);
-    }, settings.value.fadeOutTransitionMs);
-  });
-}
-
 function findLatestPlayableMessageId(): number | null {
   for (let messageId = getLastMessageId(); messageId >= 0; messageId -= 1) {
     const message = getChatMessages(messageId)[0];
@@ -590,8 +381,6 @@ function stopAutoplay() {
 }
 
 function syncMessageSelection() {
-  suppressNextStageTransition.value = true;
-  stopStageTransition();
   historyTrigger.value++;
   const messageId = settings.value.followLatestPlayable ? findLatestPlayableMessageId() : settings.value.preferredMessageId;
   settings.value.preferredMessageId = messageId;
@@ -665,8 +454,6 @@ watch(
     const [nextMessageId, nextMessageText] = nextSelection;
     const [previousMessageId, previousMessageText] = previousSelection;
     if (nextMessageId !== previousMessageId || nextMessageText !== previousMessageText) {
-      suppressNextStageTransition.value = true;
-      stopStageTransition();
       frameIndex.value = 0;
     }
   },
@@ -685,21 +472,8 @@ watch(
 
 watch(
   currentFrame,
-  (next, previous) => {
+  (_, previous) => {
     previousFrame.value = previous ?? null;
-
-    if (!next || !previous || suppressNextStageTransition.value) {
-      suppressNextStageTransition.value = false;
-      stopStageTransition();
-      return;
-    }
-
-    if (!next.transition || getFrameVisualSignature(next) === getFrameVisualSignature(previous)) {
-      stopStageTransition();
-      return;
-    }
-
-    startStageTransition(next.transition.name, previous);
   },
 );
 
@@ -742,7 +516,6 @@ onMounted(() => {
   onBeforeUnmount(() => {
     stopList.forEach(stop => stop());
     $(document).off('click', handleChatClick);
-    stopStageTransition();
     stopAutoplay();
   });
 });
@@ -786,9 +559,6 @@ onMounted(() => {
 }
 
 .renpy-player__scene-layer,
-.renpy-player__transition-layer,
-.renpy-player__transition-old,
-.renpy-player__transition-blackout,
 .renpy-player__background,
 .renpy-player__gradient,
 .renpy-player__sprite-layer,
@@ -801,11 +571,6 @@ onMounted(() => {
   z-index: 1;
 }
 
-.renpy-player__transition-layer {
-  z-index: 2;
-  pointer-events: none;
-}
-
 .renpy-player__background {
   /* Fill the fixed viewport exactly — no bleed, no scaling surprises */
   width: 100%;
@@ -815,7 +580,7 @@ onMounted(() => {
 
 /* ─── Inner viewport fills the fixed stage ───────────────────────────────── */
 .renpy-player__viewport {
-  z-index: 3;
+  z-index: 2;
 }
 
 .renpy-player__sprite-layer {
@@ -826,40 +591,6 @@ onMounted(() => {
   background:
     linear-gradient(180deg, rgba(0, 0, 0, 0.04) 0%, rgba(0, 0, 0, 0.38) 55%, rgba(0, 0, 0, 0.86) 100%),
     radial-gradient(circle at top, rgba(255, 255, 255, 0.10), transparent 50%);
-}
-
-.renpy-player__transition-old {
-  opacity: 1;
-}
-
-.renpy-player__transition-layer--dissolve .renpy-player__transition-old {
-  transition: opacity var(--renpy-stage-transition-ms) ease;
-}
-
-.renpy-player__transition-layer--dissolve.renpy-player__transition-layer--entered .renpy-player__transition-old {
-  opacity: 0;
-}
-
-.renpy-player__transition-blackout {
-  background: #000;
-  opacity: 0;
-}
-
-.renpy-player__transition-layer--fade .renpy-player__transition-blackout {
-  transition: opacity var(--renpy-fade-out-ms) ease;
-}
-
-.renpy-player__transition-layer--fade.renpy-player__transition-layer--entered .renpy-player__transition-blackout {
-  opacity: 1;
-}
-
-.renpy-player__transition-layer--fade.renpy-player__transition-layer--fade-in .renpy-player__transition-blackout {
-  opacity: 0;
-  transition-duration: var(--renpy-fade-in-ms);
-}
-
-.renpy-player__transition-layer--fade.renpy-player__transition-layer--fade-in .renpy-player__transition-old {
-  opacity: 0;
 }
 
 .renpy-player__sprite-shell {

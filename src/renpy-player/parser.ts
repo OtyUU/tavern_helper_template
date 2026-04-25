@@ -11,9 +11,7 @@ import type {
   ScriptCommand,
   ShowCommand,
   SpritePosition,
-  SpriteState,
-  TransitionName,
-  TransitionSpec,
+  SpriteState
 } from './types';
 
 type ParsedLines = Pick<ParsedScript, 'commands' | 'ignoredLines'>;
@@ -92,7 +90,6 @@ const SPRITE_TRANSFORMS = new Set(['shake', 'bounce', 'pulse']);
 const SPRITE_POSITIONS = new Set(['left', 'center', 'right']);
 const SHOW_TRANSFORMS = new Set([...SPRITE_POSITIONS, ...SPRITE_TRANSFORMS]);
 const CAMERA_COMMAND_TRANSFORMS = new Set([...CAMERA_TRANSFORMS, ...CAMERA_ANIMATIONS]);
-const SUPPORTED_TRANSITIONS = new Set<TransitionName>(['dissolve', 'fade']);
 
 function splitTransforms(raw: string): string[] {
   return raw.split(',').map(t => t.trim()).filter(Boolean);
@@ -100,46 +97,6 @@ function splitTransforms(raw: string): string[] {
 
 function hasOnlyAllowedTransforms(transforms: string[], allowed: Set<string>): boolean {
   return transforms.every(transform => allowed.has(transform.trim().toLowerCase()));
-}
-
-function parseTransitionName(value: string): TransitionName | undefined {
-  const name = value.trim().toLowerCase();
-  if (!SUPPORTED_TRANSITIONS.has(name as TransitionName)) {
-    return undefined;
-  }
-  return name as TransitionName;
-}
-
-function createTransitionSpec(name: string): TransitionSpec | undefined {
-  const parsed = parseTransitionName(name);
-  if (!parsed) {
-    return undefined;
-  }
-  return { name: parsed };
-}
-
-function extractInlineTransition(value: string): {
-  remainder: string;
-  transition?: TransitionSpec;
-  valid: boolean;
-} {
-  const match = value.match(/^(.*?)(?:\s+with\s+([A-Za-z0-9_]+))?$/i);
-  if (!match) {
-    return { remainder: value.trim(), valid: true };
-  }
-
-  const remainder = (match[1] ?? '').trim();
-  const transitionName = match[2];
-  if (!transitionName) {
-    return { remainder, valid: true };
-  }
-
-  const transition = createTransitionSpec(transitionName);
-  if (!transition) {
-    return { remainder, valid: false };
-  }
-
-  return { remainder, transition, valid: true };
 }
 
 function categorizeCameraTransforms(transforms: string[]): {
@@ -189,54 +146,24 @@ function parseLines(source: string): ParsedLines {
       if (!line || line.startsWith('#') || line.startsWith('//')) return;
 
       // scene <background> [<segment>]
-      const sceneMatch = line.match(/^scene\s+([A-Za-z0-9_-]+)(?:\s+([A-Za-z0-9_-]+))?(?:\s+with\s+([A-Za-z0-9_]+))?$/i);
+      const sceneMatch = line.match(/^scene\s+([A-Za-z0-9_-]+)(?:\s+([A-Za-z0-9_-]+))?$/i);
       if (sceneMatch) {
-        const transition = sceneMatch[3] ? createTransitionSpec(sceneMatch[3]) : undefined;
-        if (sceneMatch[3] && !transition) {
-          ignoredLines.push(line);
-          return;
-        }
-
         commands.push({
           type: 'scene',
           raw: line,
           background: sceneMatch[1],
           segment: sceneMatch[2],
-          transition,
         });
         return;
       }
 
       // hide <character>
-      const hideMatch = line.match(/^hide\s+([A-Za-z0-9_-]+)(?:\s+with\s+([A-Za-z0-9_]+))?$/i);
+      const hideMatch = line.match(/^hide\s+([A-Za-z0-9_-]+)$/i);
       if (hideMatch) {
-        const transition = hideMatch[2] ? createTransitionSpec(hideMatch[2]) : undefined;
-        if (hideMatch[2] && !transition) {
-          ignoredLines.push(line);
-          return;
-        }
-
         commands.push({
           type: 'hide',
           raw: line,
           character: hideMatch[1],
-          transition,
-        });
-        return;
-      }
-
-      const withMatch = line.match(/^with\s+([A-Za-z0-9_]+)$/i);
-      if (withMatch) {
-        const transition = createTransitionSpec(withMatch[1]);
-        if (!transition) {
-          ignoredLines.push(line);
-          return;
-        }
-
-        commands.push({
-          type: 'with',
-          raw: line,
-          transition,
         });
         return;
       }
@@ -253,13 +180,7 @@ function parseLines(source: string): ParsedLines {
 
       const cameraMatch = line.match(/^camera\s+at\s+(.+)$/i);
       if (cameraMatch) {
-        const inlineTransition = extractInlineTransition(cameraMatch[1]);
-        if (!inlineTransition.valid) {
-          ignoredLines.push(line);
-          return;
-        }
-
-        const transforms = splitTransforms(inlineTransition.remainder);
+        const transforms = splitTransforms(cameraMatch[1]);
         if (transforms.length === 0 || !hasOnlyAllowedTransforms(transforms, CAMERA_COMMAND_TRANSFORMS)) {
           ignoredLines.push(line);
           return;
@@ -270,7 +191,6 @@ function parseLines(source: string): ParsedLines {
           raw: line,
           clear: false,
           transforms,
-          transition: inlineTransition.transition,
         });
         return;
       }
@@ -280,14 +200,6 @@ function parseLines(source: string): ParsedLines {
       if (showMatch) {
         const character = showMatch[1];
         let rest = (showMatch[2] ?? '').trim();
-
-        const inlineTransition = extractInlineTransition(rest);
-        if (!inlineTransition.valid) {
-          ignoredLines.push(line);
-          return;
-        }
-        rest = inlineTransition.remainder;
-        const transition = inlineTransition.transition;
 
         // 1. Extract "at <t1>, <t2>, ..." from the end
         let transforms: string[] = [];
@@ -323,7 +235,6 @@ function parseLines(source: string): ParsedLines {
           outfit,
           blush: blush || undefined,
           transforms: transforms.length > 0 ? transforms : undefined,
-          transition,
           tokens,
         });
         return;
@@ -616,43 +527,6 @@ export function buildFrames(parsed: ParsedScript, options: FrameBuildOptions): P
   const spriteOrder: string[] = Object.keys(sprites);
   let pendingVisualOnlyFrame = false;
 
-  function pushFrame({
-    speaker,
-    text,
-    transition,
-  }: {
-    speaker?: string;
-    text?: string;
-    transition?: TransitionSpec;
-  }) {
-    frames.push({
-      index: frames.length,
-      background,
-      cameraTransform,
-      cameraAnimations: pendingCameraAnimations.length > 0 ? [...pendingCameraAnimations] : undefined,
-      transition,
-      sprites: buildSpritesArray(sprites, spriteOrder),
-      speaker,
-      text,
-    });
-    clearTransientAnimations(sprites);
-    pendingCameraAnimations = [];
-    pendingVisualOnlyFrame = false;
-  }
-
-  function pushTransitionPreview(transition: TransitionSpec) {
-    const hasVisuals = background || spriteOrder.length > 0;
-    if (!hasVisuals) {
-      return;
-    }
-
-    pushFrame({
-      transition,
-      speaker: 'Scene Preview',
-      text: `Applied ${transition.name} to the latest stage change.`,
-    });
-  }
-
   parsed.commands.forEach(command => {
     switch (command.type) {
       case 'scene': {
@@ -665,9 +539,6 @@ export function buildFrames(parsed: ParsedScript, options: FrameBuildOptions): P
         for (const id of Object.keys(sprites)) delete sprites[id];
         spriteOrder.length = 0;
         pendingVisualOnlyFrame = true;
-        if (command.transition) {
-          pushTransitionPreview(command.transition);
-        }
         return;
       }
 
@@ -677,9 +548,6 @@ export function buildFrames(parsed: ParsedScript, options: FrameBuildOptions): P
         const idx = spriteOrder.indexOf(id);
         if (idx !== -1) spriteOrder.splice(idx, 1);
         pendingVisualOnlyFrame = true;
-        if (command.transition) {
-          pushTransitionPreview(command.transition);
-        }
         return;
       }
 
@@ -695,9 +563,6 @@ export function buildFrames(parsed: ParsedScript, options: FrameBuildOptions): P
           pendingCameraAnimations = cameraAnimations;
         }
         pendingVisualOnlyFrame = true;
-        if (command.transition) {
-          pushTransitionPreview(command.transition);
-        }
         return;
       }
 
@@ -723,24 +588,22 @@ export function buildFrames(parsed: ParsedScript, options: FrameBuildOptions): P
 
         sprites[id] = newState;
         pendingVisualOnlyFrame = true;
-        if (command.transition) {
-          pushTransitionPreview(command.transition);
-        }
-        return;
-      }
-
-      case 'with': {
-        if (pendingVisualOnlyFrame) {
-          pushTransitionPreview(command.transition);
-        }
         return;
       }
 
       case 'dialogue': {
-        pushFrame({
+        frames.push({
+          index: frames.length,
+          background,
+          cameraTransform,
+          cameraAnimations: pendingCameraAnimations.length > 0 ? [...pendingCameraAnimations] : undefined,
+          sprites: buildSpritesArray(sprites, spriteOrder),
           speaker: getSpeakerLabel(command.speaker, options.speakerAliases),
           text: command.text,
         });
+        clearTransientAnimations(sprites);
+        pendingCameraAnimations = [];
+        pendingVisualOnlyFrame = false;
         return;
       }
     }
@@ -753,15 +616,29 @@ export function buildFrames(parsed: ParsedScript, options: FrameBuildOptions): P
     const text = parsed.commands.length > 0
       ? 'The script updated the stage but did not contain any dialogue lines.'
       : 'This message does not contain any script commands. Displaying inherited state.';
-    pushFrame({
+    frames.push({
+      index: 0,
+      background,
+      cameraTransform,
+      cameraAnimations: pendingCameraAnimations.length > 0 ? [...pendingCameraAnimations] : undefined,
+      sprites: buildSpritesArray(sprites, spriteOrder),
       speaker: label,
       text,
     });
+    clearTransientAnimations(sprites);
+    pendingCameraAnimations = [];
   } else if (pendingVisualOnlyFrame && hasVisuals) {
-    pushFrame({
+    frames.push({
+      index: frames.length,
+      background,
+      cameraTransform,
+      cameraAnimations: pendingCameraAnimations.length > 0 ? [...pendingCameraAnimations] : undefined,
+      sprites: buildSpritesArray(sprites, spriteOrder),
       speaker: 'Scene Preview',
       text: 'The last command only changed the scene or sprite state.',
     });
+    clearTransientAnimations(sprites);
+    pendingCameraAnimations = [];
   }
 
   return frames;

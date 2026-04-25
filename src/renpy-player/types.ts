@@ -2,17 +2,11 @@ export type HideCommand = {
   type: 'hide';
   raw: string;
   character: string;
-  transition?: TransitionSpec;
 };
 
 export type SpritePosition = 'left' | 'center' | 'right';
 export type CameraTransform = 'closeup' | 'medium';
 export type CameraAnimation = 'shake';
-export type TransitionName = 'dissolve' | 'fade';
-
-export type TransitionSpec = {
-  name: TransitionName;
-};
 
 export type ShowCommand = {
   type: 'show';
@@ -24,7 +18,6 @@ export type ShowCommand = {
   blush?: boolean;
   /** Raw transform tokens from "at <t1>, <t2>, ..." */
   transforms?: string[];
-  transition?: TransitionSpec;
   /** Remaining pose/expression candidate tokens (after stripping in/at/blush) */
   tokens: string[];
 };
@@ -36,7 +29,6 @@ export type CameraCommand = {
   clear: boolean;
   /** Raw transform tokens from `camera at <t1>, <t2>, ...` */
   transforms?: string[];
-  transition?: TransitionSpec;
 };
 
 export type SceneCommand = {
@@ -45,13 +37,6 @@ export type SceneCommand = {
   background: string;
   /** Optional day/time segment (e.g., "day", "night") */
   segment?: string;
-  transition?: TransitionSpec;
-};
-
-export type WithCommand = {
-  type: 'with';
-  raw: string;
-  transition: TransitionSpec;
 };
 
 export type DialogueCommand = {
@@ -61,7 +46,7 @@ export type DialogueCommand = {
   text: string;
 };
 
-export type ScriptCommand = SceneCommand | ShowCommand | HideCommand | CameraCommand | WithCommand | DialogueCommand;
+export type ScriptCommand = SceneCommand | ShowCommand | HideCommand | CameraCommand | DialogueCommand;
 
 export type SpriteState = {
   /** Sprite key (character name) */
@@ -115,7 +100,6 @@ export type PlayerFrame = {
   background?: PlayerAsset;
   cameraTransform?: CameraTransform;
   cameraAnimations?: CameraAnimation[];
-  transition?: TransitionSpec;
   /** Ordered list of sprites to render (order = z-order, last = top) */
   sprites: Array<{
     id: string;
