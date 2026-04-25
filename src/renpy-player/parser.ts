@@ -493,152 +493,191 @@ function buildSpritesArray(
   }));
 }
 
-function clearTransientAnimations(sprites: Record<string, SpriteState>): void {
-  for (const sprite of Object.values(sprites)) {
-    delete sprite.animations;
-  }
-}
+// ─── Stage state ─────────────────────────────────────────────────────────────
 
-function createRememberedOutfits(initialState?: InitialPlayerState): Record<string, string> {
-  const rememberedOutfits = { ...(initialState?.rememberedOutfits ?? {}) };
+class StageState {
+  private background: PlayerAsset | undefined;
+  private backgroundName: string;
+  private backgroundSegment: string | undefined;
+  private cameraTransform: CameraTransform | undefined;
+  private pendingCameraAnimations: CameraAnimation[];
+  private sprites: Record<string, SpriteState>;
+  private spriteOrder: string[];
+  private rememberedOutfits: Record<string, string>;
 
-  for (const sprite of Object.values(initialState?.sprites ?? {})) {
-    if (sprite.outfit) {
-      rememberedOutfits[sprite.id] = sprite.outfit;
+  constructor(options: FrameBuildOptions, initial?: InitialPlayerState) {
+    if (initial) {
+      this.background = initial.background;
+      this.backgroundName = initial.backgroundName ?? '';
+      this.backgroundSegment = initial.backgroundSegment;
+      this.cameraTransform = initial.cameraTransform;
+      this.sprites = { ...initial.sprites };
+      this.rememberedOutfits = { ...(initial.rememberedOutfits ?? {}) };
+      for (const sprite of Object.values(initial.sprites)) {
+        if (sprite.outfit) {
+          this.rememberedOutfits[sprite.id] = sprite.outfit;
+        }
+      }
+      this.spriteOrder = Object.keys(initial.sprites);
+    } else {
+      this.background = undefined;
+      this.backgroundName = '';
+      this.backgroundSegment = undefined;
+      this.cameraTransform = undefined;
+      this.sprites = {};
+      this.rememberedOutfits = {};
+      this.spriteOrder = [];
     }
+    this.pendingCameraAnimations = [];
   }
 
-  return rememberedOutfits;
-}
-
-// ─── Frame builder ───────────────────────────────────────────────────────────
-
-export function buildFrames(parsed: ParsedScript, options: FrameBuildOptions): PlayerFrame[] {
-  const frames: PlayerFrame[] = [];
-  let background: PlayerAsset | undefined = options.initialState?.background;
-  let backgroundName: string = options.initialState?.backgroundName ?? '';
-  let backgroundSegment: string | undefined = options.initialState?.backgroundSegment;
-  let cameraTransform: CameraTransform | undefined = options.initialState?.cameraTransform;
-  let pendingCameraAnimations: CameraAnimation[] = [];
-
-  // sprites map + insertion-order list
-  const sprites: Record<string, SpriteState> = { ...(options.initialState?.sprites ?? {}) };
-  const rememberedOutfits = createRememberedOutfits(options.initialState);
-  const spriteOrder: string[] = Object.keys(sprites);
-  let pendingVisualOnlyFrame = false;
-
-  parsed.commands.forEach(command => {
-    switch (command.type) {
+  apply(cmd: ScriptCommand, options: FrameBuildOptions): void {
+    switch (cmd.type) {
       case 'scene': {
-        const bg = command.background || backgroundName;
-        const seg = command.segment ?? backgroundSegment;
-        backgroundName = bg;
-        backgroundSegment = seg;
-        background = createBackgroundAsset({ ...command, background: bg, segment: seg }, options);
-        // Clear visible sprites, but keep remembered outfits for later shows.
-        for (const id of Object.keys(sprites)) delete sprites[id];
-        spriteOrder.length = 0;
-        pendingVisualOnlyFrame = true;
+        const bg = cmd.background || this.backgroundName;
+        const seg = cmd.segment ?? this.backgroundSegment;
+        this.backgroundName = bg;
+        this.backgroundSegment = seg;
+        this.background = createBackgroundAsset({ ...cmd, background: bg, segment: seg }, options);
+        for (const id of Object.keys(this.sprites)) delete this.sprites[id];
+        this.spriteOrder.length = 0;
         return;
       }
 
       case 'hide': {
-        const id = command.character;
-        delete sprites[id];
-        const idx = spriteOrder.indexOf(id);
-        if (idx !== -1) spriteOrder.splice(idx, 1);
-        pendingVisualOnlyFrame = true;
+        const id = cmd.character;
+        delete this.sprites[id];
+        const idx = this.spriteOrder.indexOf(id);
+        if (idx !== -1) this.spriteOrder.splice(idx, 1);
         return;
       }
 
       case 'camera': {
-        if (command.clear) {
-          cameraTransform = undefined;
-          pendingCameraAnimations = [];
-        } else if (command.transforms?.length) {
-          const { cameraTransform: nextCameraTransform, cameraAnimations } = categorizeCameraTransforms(command.transforms);
+        if (cmd.clear) {
+          this.cameraTransform = undefined;
+          this.pendingCameraAnimations = [];
+        } else if (cmd.transforms?.length) {
+          const { cameraTransform: nextCameraTransform, cameraAnimations } = categorizeCameraTransforms(cmd.transforms);
           if (nextCameraTransform) {
-            cameraTransform = nextCameraTransform;
+            this.cameraTransform = nextCameraTransform;
           }
-          pendingCameraAnimations = cameraAnimations;
+          this.pendingCameraAnimations = cameraAnimations;
         }
-        pendingVisualOnlyFrame = true;
         return;
       }
 
       case 'show': {
-        const id = command.character;
-        const existing = sprites[id];
+        const id = cmd.character;
+        const existing = this.sprites[id];
 
-        const newState = resolveShowState(command, existing, rememberedOutfits, options);
+        const newState = resolveShowState(cmd, existing, this.rememberedOutfits, options);
 
-        // Transforms
-        if (command.transforms && command.transforms.length > 0) {
-          const { spritePosition, spriteAnimations } = categorizeShowTransforms(command.transforms);
+        if (cmd.transforms && cmd.transforms.length > 0) {
+          const { spritePosition, spriteAnimations } = categorizeShowTransforms(cmd.transforms);
           if (spritePosition) {
             newState.position = spritePosition;
           }
           newState.animations = spriteAnimations.length > 0 ? spriteAnimations : undefined;
         }
 
-        // Update order: move to end (most recently shown = top)
-        const idx = spriteOrder.indexOf(id);
-        if (idx !== -1) spriteOrder.splice(idx, 1);
-        spriteOrder.push(id);
+        const idx = this.spriteOrder.indexOf(id);
+        if (idx !== -1) this.spriteOrder.splice(idx, 1);
+        this.spriteOrder.push(id);
 
-        sprites[id] = newState;
-        pendingVisualOnlyFrame = true;
+        this.sprites[id] = newState;
         return;
       }
 
       case 'dialogue': {
-        frames.push({
-          index: frames.length,
-          background,
-          cameraTransform,
-          cameraAnimations: pendingCameraAnimations.length > 0 ? [...pendingCameraAnimations] : undefined,
-          sprites: buildSpritesArray(sprites, spriteOrder),
-          speaker: getSpeakerLabel(command.speaker, options.speakerAliases),
-          text: command.text,
-        });
-        clearTransientAnimations(sprites);
-        pendingCameraAnimations = [];
-        pendingVisualOnlyFrame = false;
         return;
       }
     }
-  });
+  }
 
-  // Fallback frames
-  const hasVisuals = background || spriteOrder.length > 0;
-  if (frames.length === 0 && hasVisuals) {
-    const label = parsed.commands.length > 0 ? 'Scene Preview' : 'Active Scene';
-    const text = parsed.commands.length > 0
-      ? 'The script updated the stage but did not contain any dialogue lines.'
-      : 'This message does not contain any script commands. Displaying inherited state.';
+  flush(): {
+    background: PlayerAsset | undefined;
+    cameraTransform: CameraTransform | undefined;
+    cameraAnimations: CameraAnimation[] | undefined;
+    sprites: PlayerFrame['sprites'];
+  } {
+    const result = {
+      background: this.background,
+      cameraTransform: this.cameraTransform,
+      cameraAnimations: this.pendingCameraAnimations.length > 0
+        ? [...this.pendingCameraAnimations]
+        : undefined,
+      sprites: buildSpritesArray(this.sprites, this.spriteOrder),
+    };
+
+    this.pendingCameraAnimations = [];
+    for (const sprite of Object.values(this.sprites)) {
+      delete sprite.animations;
+    }
+
+    return result;
+  }
+
+  hasVisuals(): boolean {
+    return !!(this.background || this.spriteOrder.length > 0);
+  }
+
+  getBackgroundName(): string {
+    return this.backgroundName;
+  }
+
+  getBackgroundSegment(): string | undefined {
+    return this.backgroundSegment;
+  }
+
+  getRememberedOutfits(): Record<string, string> {
+    return this.rememberedOutfits;
+  }
+
+  getSpritesMap(): Record<string, SpriteState> {
+    return { ...this.sprites };
+  }
+}
+
+// ─── Frame builder ───────────────────────────────────────────────────────────
+
+export function buildFrames(parsed: ParsedScript, options: FrameBuildOptions): PlayerFrame[] {
+  const frames: PlayerFrame[] = [];
+  const stage = new StageState(options, options.initialState);
+  let dirty = false;
+
+  for (const cmd of parsed.commands) {
+    if (cmd.type === 'dialogue') {
+      frames.push({
+        index: frames.length,
+        speaker: getSpeakerLabel(cmd.speaker, options.speakerAliases),
+        text: cmd.text,
+        ...stage.flush(),
+      });
+      dirty = false;
+      continue;
+    }
+
+    stage.apply(cmd, options);
+    dirty = true;
+  }
+
+  // Preserve original fallback ordering: "no dialogue" case first.
+  if (frames.length === 0 && stage.hasVisuals()) {
     frames.push({
       index: 0,
-      background,
-      cameraTransform,
-      cameraAnimations: pendingCameraAnimations.length > 0 ? [...pendingCameraAnimations] : undefined,
-      sprites: buildSpritesArray(sprites, spriteOrder),
-      speaker: label,
-      text,
+      speaker: parsed.commands.length > 0 ? 'Scene Preview' : 'Active Scene',
+      text: parsed.commands.length > 0
+        ? 'The script updated the stage but did not contain any dialogue lines.'
+        : 'This message does not contain any script commands. Displaying inherited state.',
+      ...stage.flush(),
     });
-    clearTransientAnimations(sprites);
-    pendingCameraAnimations = [];
-  } else if (pendingVisualOnlyFrame && hasVisuals) {
+  } else if (dirty && stage.hasVisuals()) {
     frames.push({
       index: frames.length,
-      background,
-      cameraTransform,
-      cameraAnimations: pendingCameraAnimations.length > 0 ? [...pendingCameraAnimations] : undefined,
-      sprites: buildSpritesArray(sprites, spriteOrder),
       speaker: 'Scene Preview',
       text: 'The last command only changed the scene or sprite state.',
+      ...stage.flush(),
     });
-    clearTransientAnimations(sprites);
-    pendingCameraAnimations = [];
   }
 
   return frames;
@@ -646,79 +685,29 @@ export function buildFrames(parsed: ParsedScript, options: FrameBuildOptions): P
 
 // ─── Initial state builder ───────────────────────────────────────────────────
 
-export function getInitialState(messagesBackwards: string[], options: FrameBuildOptions): InitialPlayerState {
-  let background: PlayerAsset | undefined;
-  let backgroundName: string | undefined;
-  let backgroundSegment: string | undefined;
-  let cameraTransform: CameraTransform | undefined;
-  const sprites: Record<string, SpriteState> = {};
-  const rememberedOutfits: Record<string, string> = {};
-  const spriteOrder: string[] = [];
+export function getInitialState(
+  messagesBackwards: string[],
+  options: FrameBuildOptions,
+): InitialPlayerState {
+  const stage = new StageState(options);
 
-  // messagesBackwards[0] = message just before current, built newest→oldest
-  // iterate oldest-first so later messages overwrite earlier ones
   for (let i = messagesBackwards.length - 1; i >= 0; i--) {
     const parsed = parseScriptFromMessage(messagesBackwards[i]);
-
     for (const cmd of parsed.commands) {
-      if (cmd.type === 'scene') {
-        const bg = cmd.background || backgroundName || '';
-        const seg = cmd.segment ?? backgroundSegment;
-        backgroundName = bg;
-        backgroundSegment = seg;
-        background = createBackgroundAsset({ ...cmd, background: bg, segment: seg }, options);
-        for (const id of Object.keys(sprites)) delete sprites[id];
-        spriteOrder.length = 0;
-        continue;
-      }
-
-      if (cmd.type === 'hide') {
-        const id = cmd.character;
-        delete sprites[id];
-        const idx = spriteOrder.indexOf(id);
-        if (idx !== -1) spriteOrder.splice(idx, 1);
-        continue;
-      }
-
-      if (cmd.type === 'camera') {
-        if (cmd.clear) {
-          cameraTransform = undefined;
-        } else if (cmd.transforms?.length) {
-          const { cameraTransform: nextCameraTransform } = categorizeCameraTransforms(cmd.transforms);
-          if (nextCameraTransform) {
-            cameraTransform = nextCameraTransform;
-          }
-        }
-        continue;
-      }
-
-      if (cmd.type === 'show') {
-        const id = cmd.character;
-        const existing = sprites[id];
-
-        const newState = resolveShowState(cmd, existing, rememberedOutfits, options);
-
-        if (cmd.transforms && cmd.transforms.length > 0) {
-          const { spritePosition } = categorizeShowTransforms(cmd.transforms);
-          if (spritePosition) {
-            newState.position = spritePosition;
-          }
-        }
-
-        const idx = spriteOrder.indexOf(id);
-        if (idx !== -1) spriteOrder.splice(idx, 1);
-        spriteOrder.push(id);
-        sprites[id] = newState;
-      }
+      stage.apply(cmd, options);
     }
   }
 
+  // flush() strips transient sprite animations so they don't
+  // bleed into frame 0 of the next buildFrames() call.
+  stage.flush();
+
   return {
-    background,
-    backgroundName,
-    backgroundSegment,
-    cameraTransform,
-    rememberedOutfits,
-    sprites,
+    background: stage['background'],
+    backgroundName: stage.getBackgroundName(),
+    backgroundSegment: stage.getBackgroundSegment(),
+    cameraTransform: stage['cameraTransform'],
+    rememberedOutfits: stage.getRememberedOutfits(),
+    sprites: stage.getSpritesMap(),
   };
 }
