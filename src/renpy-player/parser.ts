@@ -50,30 +50,6 @@ function unquote(value: string): string {
   return body.replace(/\\(["'])/g, '$1').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
 }
 
-function createTokenCandidates(token: string): string[] {
-  const raw = normalizeToken(token);
-  if (!raw) return [];
-  // Just lowercase - keep underscores as-is (they're part of token names)
-  return [raw.toLowerCase()];
-}
-
-function createNameCandidates(name: string, aliases: Record<string, string>): string[] {
-  const raw = normalizeToken(name);
-  const lower = raw.toLowerCase();
-  const alias = aliases[raw] ?? aliases[lower];
-  if (alias) {
-    return [alias.toLowerCase(), lower];
-  }
-  return [lower];
-}
-
-function createBackgroundTokenCandidates(token: string): string[] {
-  const raw = normalizeToken(token);
-  if (!raw) return [];
-  // Just lowercase - keep underscores as-is (they're part of token names)
-  return [raw.toLowerCase()];
-}
-
 function getSpeakerLabel(speaker: string, aliases: Record<string, string>): string {
   const raw = speaker.trim();
   const alias = aliases[raw] ?? aliases[raw.toLowerCase()];
