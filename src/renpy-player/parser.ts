@@ -22,10 +22,6 @@ function unique(items: string[]): string[] {
   return [...new Set(items.filter(Boolean))];
 }
 
-function normalizeToken(token: string): string {
-  return token.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
-}
-
 function trimTrailingSlash(value: string): string {
   return value.replace(/[\\/]+$/g, '');
 }
