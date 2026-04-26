@@ -21,7 +21,6 @@ const BaseSettingsSchema = z
     expressionChangeMs: z.coerce.number().int().min(0).max(2000).default(160),
     poseChangeMs: z.coerce.number().int().min(0).max(2000).default(90),
     speakerAliases: z.string().default('{"c":"Chinami"}'),
-    characterFolderAliases: z.string().default('{}'),
     characterSpriteConfig: z.string().default('{}'),
     defaultSpriteLayout: z.enum(['outfit_pose', 'flat']).default('outfit_pose'),
     defaultPose: z.string().default('base'),
@@ -161,7 +160,6 @@ export const useRenpyPlayerSettingsStore = defineStore('renpy-player-settings', 
   );
 
   const speakerAliasesResult = computed(() => parseStringMap(settings.value.speakerAliases));
-  const characterFolderAliasesResult = computed(() => parseStringMap(settings.value.characterFolderAliases));
   const characterSpriteConfigResult = computed(() => parseCharacterSpriteConfig(settings.value.characterSpriteConfig));
 
   const assetExtensions = computed(() =>
@@ -184,8 +182,6 @@ export const useRenpyPlayerSettingsStore = defineStore('renpy-player-settings', 
     globalPoseTokens,
     speakerAliases: computed(() => speakerAliasesResult.value.value),
     speakerAliasesError: computed(() => speakerAliasesResult.value.error),
-    characterFolderAliases: computed(() => characterFolderAliasesResult.value.value),
-    characterFolderAliasesError: computed(() => characterFolderAliasesResult.value.error),
     characterSpriteConfig: computed(() => characterSpriteConfigResult.value.value),
     characterSpriteConfigError: computed(() => characterSpriteConfigResult.value.error),
   };

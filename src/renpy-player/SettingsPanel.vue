@@ -176,20 +176,6 @@
           <small>Use this for short dialogue tags like <code>c</code>.</small>
           <small v-if="speakerAliasesError" class="renpy-player-settings__error">{{ speakerAliasesError }}</small>
         </div>
-
-        <div class="renpy-player-settings__field">
-          <label>Character folder aliases JSON</label>
-          <textarea
-            v-model="settings.characterFolderAliases"
-            class="text_pole"
-            rows="4"
-            placeholder='{"chinami":"Chinami"}'
-          ></textarea>
-          <small>Use this if your script name and folder name do not match exactly.</small>
-          <small v-if="characterFolderAliasesError" class="renpy-player-settings__error">
-            {{ characterFolderAliasesError }}
-          </small>
-        </div>
       </section>
 
       <section class="renpy-player-settings__section">
@@ -255,7 +241,7 @@ import { storeToRefs } from 'pinia';
 import { useRenpyPlayerSettingsStore } from './settings';
 
 const store = useRenpyPlayerSettingsStore();
-const { settings, speakerAliasesError, characterFolderAliasesError, characterSpriteConfigError } = storeToRefs(store);
+const { settings, speakerAliasesError, characterSpriteConfigError } = storeToRefs(store);
 
 const spritePathExample = computed(
   () => `${settings.value.spriteRoot || '[sprite root]'}/chinami/pajamas/base/annoyed.png`,

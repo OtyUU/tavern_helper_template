@@ -92,8 +92,6 @@
 
       <!-- Center: status pills -->
       <div class="renpy-player__status">
-        <span v-if="currentMessage" class="vn-pill">Msg {{ currentMessage.message_id }}</span>
-        <span v-else class="vn-pill">No script</span>
         <span v-if="frames.length" class="vn-pill">{{ frameIndex + 1 }}/{{ frames.length }}</span>
         <span v-if="settings.followLatestPlayable" class="vn-pill vn-pill--auto">Auto</span>
       </div>
@@ -103,15 +101,6 @@
         <button class="vn-btn" type="button" title="Jump to latest script" @click="useLatestPlayable">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18z"/></svg>
           <span>Latest</span>
-        </button>
-        <button
-          class="vn-btn" type="button"
-          :class="{ 'vn-btn--active': captureMode }"
-          :title="captureMode ? 'Click a chat message…' : 'Pick message from chat'"
-          @click="toggleCaptureMode"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
-          <span>{{ captureMode ? 'Click chat…' : 'Pick' }}</span>
         </button>
         <label class="renpy-player__input-group" title="Jump to message ID">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="opacity:.6"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
@@ -145,7 +134,6 @@
           <li v-if="!currentFrame?.background?.candidates?.length">None</li>
         </ul>
         <p v-if="speakerAliasesError"><strong>Speaker alias JSON:</strong> {{ speakerAliasesError }}</p>
-        <p v-if="characterFolderAliasesError"><strong>Folder alias JSON:</strong> {{ characterFolderAliasesError }}</p>
         <p v-if="characterSpriteConfigError"><strong>Character config JSON:</strong> {{ characterSpriteConfigError }}</p>
       </div>
     </details>
@@ -165,15 +153,12 @@ const {
   globalPoseTokens,
   speakerAliases,
   speakerAliasesError,
-  characterFolderAliases,
-  characterFolderAliasesError,
   characterSpriteConfig,
   characterSpriteConfigError,
 } = storeToRefs(settingsStore);
 
 const currentMessage = ref<ChatMessage | null>(null);
 const historyTrigger = ref(0);
-const captureMode = ref(false);
 const frameIndex = ref(0);
 const isAutoplaying = ref(false);
 const manualMessageId = ref<number | null>(settings.value.preferredMessageId);
@@ -202,7 +187,6 @@ const frames = computed(() => {
     backgroundRoot: settings.value.backgroundRoot,
     assetExtensions: assetExtensions.value,
     speakerAliases: speakerAliases.value,
-    characterFolderAliases: characterFolderAliases.value,
     characterSpriteConfig: characterSpriteConfig.value,
     defaultSpriteLayout: settings.value.defaultSpriteLayout,
     defaultPose: settings.value.defaultPose,
@@ -397,7 +381,6 @@ function useLatestPlayable() {
 function selectMessage(messageId: number) {
   settings.value.followLatestPlayable = false;
   settings.value.preferredMessageId = messageId;
-  captureMode.value = false;
   syncMessageSelection();
   frameIndex.value = 0;
 }
@@ -407,10 +390,6 @@ function applyManualMessageId() {
     return;
   }
   selectMessage(manualMessageId.value);
-}
-
-function toggleCaptureMode() {
-  captureMode.value = !captureMode.value;
 }
 
 function jumpToStart() {
@@ -500,22 +479,8 @@ onMounted(() => {
     eventOn(tavern_events.MORE_MESSAGES_LOADED, syncMessageSelection).stop,
   ];
 
-  const handleChatClick = (event: JQuery.ClickEvent) => {
-    if (!captureMode.value) {
-      return;
-    }
-    const $message = $(event.target as HTMLElement).closest('.mes');
-    const messageId = Number($message.attr('mesid') ?? 'NaN');
-    if (!Number.isNaN(messageId)) {
-      selectMessage(messageId);
-    }
-  };
-
-  $(document).on('click', handleChatClick);
-
   onBeforeUnmount(() => {
     stopList.forEach(stop => stop());
-    $(document).off('click', handleChatClick);
     stopAutoplay();
   });
 });
