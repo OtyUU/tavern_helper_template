@@ -2,8 +2,7 @@ import type { CharacterSpriteConfig } from './types';
 
 const BaseSettingsSchema = z
   .object({
-    spriteRoot: z.string().default(''),
-    backgroundRoot: z.string().default(''),
+    assetRoot: z.string().default(''),
     assetExtensions: z.string().default('png,jpg,jpeg,webp'),
     stageHeight: z.coerce.number().int().min(200).max(1200).default(480),
     defaultBackgroundScale: z.coerce.number().min(0.5).max(3.0).default(1.0),

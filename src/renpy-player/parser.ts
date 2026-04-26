@@ -26,6 +26,12 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/[\\/]+$/g, '');
 }
 
+function buildCandidates(dir: string, baseNames: string[], extensions: string[]): string[] {
+  const cleanDir = trimTrailingSlash(dir);
+  const exts = unique(extensions);
+  return exts.flatMap(ext => baseNames.map(name => joinPath(cleanDir, `${name}.${ext}`)));
+}
+
 function joinPath(...parts: string[]): string {
   const filtered = parts.map(part => part.replace(/\\/g, '/')).filter(part => part.length > 0);
   if (filtered.length === 0) return '';
@@ -269,21 +275,17 @@ export function parseScriptFromMessage(message: string): ParsedScript {
 // ─── Background asset ────────────────────────────────────────────────────────
 
 function createBackgroundAsset(command: SceneCommand, options: FrameBuildOptions): PlayerAsset | undefined {
-  const root = trimTrailingSlash(options.backgroundRoot);
+  const root = joinPath(trimTrailingSlash(options.assetRoot), 'bg');
   const name = command.background.toLowerCase();
   const segment = command.segment?.toLowerCase();
-  const extensions = unique(options.assetExtensions);
 
-  const candidates = extensions.flatMap(ext =>
-    segment
-      ? [joinPath(root, `${name}-${segment}.${ext}`)]  // dash joiner
-      : [joinPath(root, `${name}.${ext}`)]
-  );
+  const base = segment ? `${name}-${segment}` : name;
+  const candidates = buildCandidates(root, [base], options.assetExtensions);
 
   if (candidates.length === 0) return undefined;
   return {
     candidates,
-    description: command.segment ? `${command.background}-${command.segment}` : command.background,
+    description: segment ? `${command.background}-${command.segment}` : command.background,
   };
 }
 
@@ -297,20 +299,15 @@ function createSpriteAssetOutfitPose(
   blush: boolean,
   options: FrameBuildOptions,
 ): PlayerAsset | undefined {
-  const root = trimTrailingSlash(options.spriteRoot);
+  const root = trimTrailingSlash(options.assetRoot);
   const char = character.toLowerCase();
   const out = outfit.toLowerCase();
   const pos = pose.toLowerCase();
   const expr = expression.toLowerCase();
 
-  const candidates = options.assetExtensions.flatMap(ext => {
-    const paths: string[] = [];
-    if (blush) {
-      paths.push(joinPath(root, char, out, pos, `${expr}-blush.${ext}`));  // dash for blush
-    }
-    paths.push(joinPath(root, char, out, pos, `${expr}.${ext}`));
-    return paths;
-  });
+  const dir = joinPath(root, char, out, pos);
+  const baseNames = blush ? [`${expr}-blush`, expr] : [expr];
+  const candidates = buildCandidates(dir, baseNames, options.assetExtensions);
 
   if (candidates.length === 0) return undefined;
   return {
@@ -325,18 +322,13 @@ function createSpriteAssetFlat(
   blush: boolean,
   options: FrameBuildOptions,
 ): PlayerAsset | undefined {
-  const root = trimTrailingSlash(options.spriteRoot);
+  const root = trimTrailingSlash(options.assetRoot);
   const char = character.toLowerCase();
   const expr = expression.toLowerCase();
 
-  const candidates = options.assetExtensions.flatMap(ext => {
-    const paths: string[] = [];
-    if (blush) {
-      paths.push(joinPath(root, char, `${expr}-blush.${ext}`));  // dash for blush
-    }
-    paths.push(joinPath(root, char, `${expr}.${ext}`));
-    return paths;
-  });
+  const dir = joinPath(root, char);
+  const baseNames = blush ? [`${expr}-blush`, expr] : [expr];
+  const candidates = buildCandidates(dir, baseNames, options.assetExtensions);
 
   if (candidates.length === 0) return undefined;
   return {

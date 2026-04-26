@@ -13,20 +13,10 @@
         </div>
 
         <div class="renpy-player-settings__field">
-          <label>Sprite root URL/path</label>
-          <input v-model="settings.spriteRoot" class="text_pole" type="text" placeholder="https://example.com/assets" />
-          <small>Sprites are resolved like <code>{{ spritePathExample }}</code>.</small>
-        </div>
-
-        <div class="renpy-player-settings__field">
-          <label>Background root URL/path</label>
-          <input
-            v-model="settings.backgroundRoot"
-            class="text_pole"
-            type="text"
-            placeholder="https://example.com/backgrounds"
-          />
-          <small>Backgrounds are resolved like <code>{{ backgroundPathExample }}</code>.</small>
+          <label>Asset root URL/path</label>
+          <input v-model="settings.assetRoot" class="text_pole" type="text" placeholder="https://example.com/assets" />
+          <small>Sprites: <code>{{ spritePathExample }}</code></small>
+          <small>Backgrounds: <code>{{ backgroundPathExample }}</code></small>
         </div>
 
         <div class="renpy-player-settings__grid">
@@ -225,10 +215,10 @@ const store = useRenpyPlayerSettingsStore();
 const { settings, characterSpriteConfigError } = storeToRefs(store);
 
 const spritePathExample = computed(
-  () => `${settings.value.spriteRoot || '[sprite root]'}/chinami/pajamas/base/annoyed.png`,
+  () => `${settings.value.assetRoot || '[asset root]'}/chinami/maid_uniform/base/averted.png`,
 );
 const backgroundPathExample = computed(
-  () => `${settings.value.backgroundRoot || '[background root]'}/protagonist_room-day.png`,
+  () => `${settings.value.assetRoot || '[asset root]'}/bg/chinami_room-day.png`,
 );
 
 const charConfigPlaceholder = JSON.stringify(

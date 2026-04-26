@@ -122,8 +122,7 @@ export type CharacterSpriteConfig = {
 };
 
 export type FrameBuildOptions = {
-  spriteRoot: string;
-  backgroundRoot: string;
+  assetRoot: string;
   assetExtensions: string[];
   characterSpriteConfig: Record<string, CharacterSpriteConfig>;
   defaultSpriteLayout: 'outfit_pose' | 'flat';

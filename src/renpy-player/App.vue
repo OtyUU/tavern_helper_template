@@ -180,8 +180,7 @@ const frames = computed(() => {
   }
 
   const buildOptions = {
-    spriteRoot: settings.value.spriteRoot,
-    backgroundRoot: settings.value.backgroundRoot,
+    assetRoot: settings.value.assetRoot,
     assetExtensions: assetExtensions.value,
     characterSpriteConfig: characterSpriteConfig.value,
     defaultSpriteLayout: settings.value.defaultSpriteLayout,
