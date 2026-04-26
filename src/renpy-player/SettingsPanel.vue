@@ -161,25 +161,6 @@
 
       <section class="renpy-player-settings__section">
         <div class="renpy-player-settings__section-header">
-          <h4>Parsing helpers</h4>
-          <p>Optional aliases to make shorter script names resolve correctly.</p>
-        </div>
-
-        <div class="renpy-player-settings__field">
-          <label>Speaker aliases JSON</label>
-          <textarea
-            v-model="settings.speakerAliases"
-            class="text_pole"
-            rows="4"
-            placeholder='{"c":"Chinami"}'
-          ></textarea>
-          <small>Use this for short dialogue tags like <code>c</code>.</small>
-          <small v-if="speakerAliasesError" class="renpy-player-settings__error">{{ speakerAliasesError }}</small>
-        </div>
-      </section>
-
-      <section class="renpy-player-settings__section">
-        <div class="renpy-player-settings__section-header">
           <h4>Character layouts</h4>
           <p>
             Configure per-character sprite layout, default outfit, and pose tokens.
@@ -241,7 +222,7 @@ import { storeToRefs } from 'pinia';
 import { useRenpyPlayerSettingsStore } from './settings';
 
 const store = useRenpyPlayerSettingsStore();
-const { settings, speakerAliasesError, characterSpriteConfigError } = storeToRefs(store);
+const { settings, characterSpriteConfigError } = storeToRefs(store);
 
 const spritePathExample = computed(
   () => `${settings.value.spriteRoot || '[sprite root]'}/chinami/pajamas/base/annoyed.png`,

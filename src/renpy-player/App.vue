@@ -133,7 +133,6 @@
           <li v-for="c in currentFrame?.background?.candidates" :key="c">{{ c }}</li>
           <li v-if="!currentFrame?.background?.candidates?.length">None</li>
         </ul>
-        <p v-if="speakerAliasesError"><strong>Speaker alias JSON:</strong> {{ speakerAliasesError }}</p>
         <p v-if="characterSpriteConfigError"><strong>Character config JSON:</strong> {{ characterSpriteConfigError }}</p>
       </div>
     </details>
@@ -151,8 +150,6 @@ const {
   settings,
   assetExtensions,
   globalPoseTokens,
-  speakerAliases,
-  speakerAliasesError,
   characterSpriteConfig,
   characterSpriteConfigError,
 } = storeToRefs(settingsStore);
@@ -186,7 +183,6 @@ const frames = computed(() => {
     spriteRoot: settings.value.spriteRoot,
     backgroundRoot: settings.value.backgroundRoot,
     assetExtensions: assetExtensions.value,
-    speakerAliases: speakerAliases.value,
     characterSpriteConfig: characterSpriteConfig.value,
     defaultSpriteLayout: settings.value.defaultSpriteLayout,
     defaultPose: settings.value.defaultPose,

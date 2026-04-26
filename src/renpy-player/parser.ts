@@ -46,10 +46,8 @@ function unquote(value: string): string {
   return body.replace(/\\(["'])/g, '$1').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
 }
 
-function getSpeakerLabel(speaker: string, aliases: Record<string, string>): string {
+function getSpeakerLabel(speaker: string): string {
   const raw = speaker.trim();
-  const alias = aliases[raw] ?? aliases[raw.toLowerCase()];
-  if (alias) return alias;
   if (raw.toLowerCase() === 'narrator') return 'Narrator';
   return raw.length > 1 ? raw.charAt(0).toUpperCase() + raw.slice(1) : raw.toUpperCase();
 }
@@ -629,7 +627,7 @@ export function buildFrames(parsed: ParsedScript, options: FrameBuildOptions): P
     if (cmd.type === 'dialogue') {
       frames.push({
         index: frames.length,
-        speaker: getSpeakerLabel(cmd.speaker, options.speakerAliases),
+        speaker: getSpeakerLabel(cmd.speaker),
         text: cmd.text,
         ...stage.flush(),
       });

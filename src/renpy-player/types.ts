@@ -125,7 +125,6 @@ export type FrameBuildOptions = {
   spriteRoot: string;
   backgroundRoot: string;
   assetExtensions: string[];
-  speakerAliases: Record<string, string>;
   characterSpriteConfig: Record<string, CharacterSpriteConfig>;
   defaultSpriteLayout: 'outfit_pose' | 'flat';
   defaultPose: string;

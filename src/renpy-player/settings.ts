@@ -20,7 +20,6 @@ const BaseSettingsSchema = z
     cameraTransitionMs: z.coerce.number().int().min(0).max(5000).default(350),
     expressionChangeMs: z.coerce.number().int().min(0).max(2000).default(160),
     poseChangeMs: z.coerce.number().int().min(0).max(2000).default(90),
-    speakerAliases: z.string().default('{"c":"Chinami"}'),
     characterSpriteConfig: z.string().default('{}'),
     defaultSpriteLayout: z.enum(['outfit_pose', 'flat']).default('outfit_pose'),
     defaultPose: z.string().default('base'),
@@ -94,22 +93,6 @@ function loadPersistedSettings(scriptId: string): {
   };
 }
 
-function parseStringMap(source: string): { value: Record<string, string>; error: string | null } {
-  if (!source.trim()) {
-    return { value: {}, error: null };
-  }
-
-  try {
-    const parsed = z.record(z.string(), z.string()).parse(JSON.parse(source));
-    return { value: parsed, error: null };
-  } catch (error) {
-    return {
-      value: {},
-      error: error instanceof Error ? error.message : 'Unable to parse JSON.',
-    };
-  }
-}
-
 const CharacterSpriteConfigSchema = z.record(
   z.string(),
   z.object({
@@ -159,7 +142,6 @@ export const useRenpyPlayerSettingsStore = defineStore('renpy-player-settings', 
     { deep: true },
   );
 
-  const speakerAliasesResult = computed(() => parseStringMap(settings.value.speakerAliases));
   const characterSpriteConfigResult = computed(() => parseCharacterSpriteConfig(settings.value.characterSpriteConfig));
 
   const assetExtensions = computed(() =>
@@ -180,8 +162,6 @@ export const useRenpyPlayerSettingsStore = defineStore('renpy-player-settings', 
     settings,
     assetExtensions,
     globalPoseTokens,
-    speakerAliases: computed(() => speakerAliasesResult.value.value),
-    speakerAliasesError: computed(() => speakerAliasesResult.value.error),
     characterSpriteConfig: computed(() => characterSpriteConfigResult.value.value),
     characterSpriteConfigError: computed(() => characterSpriteConfigResult.value.error),
   };
