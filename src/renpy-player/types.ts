@@ -14,18 +14,16 @@ export type ShowCommand = {
   character: string;
   /** Explicit outfit from "in <outfit>", if present */
   outfit?: string;
-  /** True if "blush" keyword was present */
   blush?: boolean;
   /** Raw transform tokens from "at <t1>, <t2>, ..." */
   transforms?: string[];
-  /** Remaining pose/expression candidate tokens (after stripping in/at/blush) */
   tokens: string[];
 };
 
 export type CameraCommand = {
   type: 'camera';
   raw: string;
-  /** Bare `camera` clears the persistent zoom state */
+  /** Bare `camera` clears the persistent camera transform and any pending camera animations */
   clear: boolean;
   /** Raw transform tokens from `camera at <t1>, <t2>, ...` */
   transforms?: string[];
@@ -49,22 +47,17 @@ export type DialogueCommand = {
 export type ScriptCommand = SceneCommand | ShowCommand | HideCommand | CameraCommand | DialogueCommand;
 
 export type SpriteState = {
-  /** Sprite key (character name) */
+  /** Sprite id (currently the character name) */
   id: string;
   character: string;
-  /** Stage anchor position */
   position: SpritePosition;
   /** Current outfit for this sprite (only for outfit_pose layout) */
   outfit?: string;
-  /** Current pose for this visible sprite */
   pose?: string;
-  /** Current expression */
   expression?: string;
-  /** Current blush state */
   blush?: boolean;
-  /** Resolved asset candidates */
   asset?: PlayerAsset;
-  /** Active sprite-level animations (e.g., ["shake"]) */
+  /** One-shot sprite animations applied for the next emitted frame (cleared after flush) */
   animations?: string[];
 };
 
@@ -77,9 +70,8 @@ export type InitialPlayerState = {
   backgroundSegment?: string;
   /** Persistent global camera zoom */
   cameraTransform?: CameraTransform;
-  /** Last known outfit per character, even if they're not currently visible */
+  /** Remembered outfit per character, used when `show` omits `in <outfit>` (may include non-visible characters) */
   rememberedOutfits: Record<string, string>;
-  /** Map of active sprites by id */
   sprites: Record<string, SpriteState>;
 };
 
@@ -99,8 +91,9 @@ export type PlayerFrame = {
   index: number;
   background?: PlayerAsset;
   cameraTransform?: CameraTransform;
+  /** One-shot camera animations for this frame (not persistent) */
   cameraAnimations?: CameraAnimation[];
-  /** Ordered list of sprites to render (order = z-order, last = top) */
+  /** Render order (DOM order): later entries appear on top */
   sprites: Array<{
     id: string;
     position: SpritePosition;
