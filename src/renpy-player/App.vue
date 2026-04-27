@@ -222,9 +222,7 @@ const {
 const currentMessage = ref<ChatMessage | null>(null);
 const historyTrigger = ref(0);
 const frameIndex = ref(0);
-const isAutoplaying = ref(false);
 const manualMessageId = ref<number | null>(settings.value.preferredMessageId);
-const autoplayHandle = ref<number | null>(null);
 const displayedBackground = ref<PlayerAsset | undefined>();
 const displayedSprites = ref<PlayerFrame['sprites']>([]);
 const previousDisplayedSprites = ref<PlayerFrame['sprites']>([]);
@@ -278,6 +276,7 @@ const frames = computed(() => {
 });
 
 const currentFrame = computed(() => frames.value[frameIndex.value] ?? null);
+const autoPlayDelayMs = computed(() => settings.value.autoPlayDelayMs);
 
 const hasFrames = computed(() => frames.value.length > 0);
 const isBusy = computed(() => isSceneTransitioning.value);
@@ -633,6 +632,66 @@ function onSpriteLeave(el: Element, done: () => void) {
 //#endregion
 
 //#region 5) actions (selection, transport)
+function useAutoplay(deps: {
+  frames: { value: PlayerFrame[] };
+  frameIndex: { value: number };
+  isSceneTransitioning: { value: boolean };
+  autoPlayDelayMs: { value: number };
+  stepForward: () => void;
+}) {
+  const isAutoplaying = ref(false);
+  const autoplayHandle = ref<number | null>(null);
+
+  function stopAutoplay() {
+    if (autoplayHandle.value !== null) {
+      window.clearInterval(autoplayHandle.value);
+      autoplayHandle.value = null;
+    }
+    isAutoplaying.value = false;
+  }
+
+  function toggleAutoplay() {
+    if (deps.isSceneTransitioning.value) {
+      return;
+    }
+    if (isAutoplaying.value) {
+      stopAutoplay();
+      return;
+    }
+    if (deps.frames.value.length <= 1) {
+      return;
+    }
+
+    isAutoplaying.value = true;
+    autoplayHandle.value = window.setInterval(() => {
+      if (deps.isSceneTransitioning.value) {
+        return;
+      }
+      if (deps.frameIndex.value >= deps.frames.value.length - 1) {
+        stopAutoplay();
+        return;
+      }
+      deps.stepForward();
+    }, deps.autoPlayDelayMs.value);
+  }
+
+  watch(
+    () => deps.autoPlayDelayMs.value,
+    () => {
+      if (isAutoplaying.value) {
+        stopAutoplay();
+        toggleAutoplay();
+      }
+    },
+  );
+
+  return {
+    isAutoplaying,
+    stopAutoplay,
+    toggleAutoplay,
+  };
+}
+
 function findLatestPlayableMessageId(): number | null {
   for (let messageId = getLastMessageId(); messageId >= 0; messageId -= 1) {
     const message = getChatMessages(messageId)[0];
@@ -641,14 +700,6 @@ function findLatestPlayableMessageId(): number | null {
     }
   }
   return null;
-}
-
-function stopAutoplay() {
-  if (autoplayHandle.value !== null) {
-    window.clearInterval(autoplayHandle.value);
-    autoplayHandle.value = null;
-  }
-  isAutoplaying.value = false;
 }
 
 function syncMessageSelection() {
@@ -700,30 +751,13 @@ function stepForward() {
   frameIndex.value = Math.min(frames.value.length - 1, frameIndex.value + 1);
 }
 
-function toggleAutoplay() {
-  if (isSceneTransitioning.value) {
-    return;
-  }
-  if (isAutoplaying.value) {
-    stopAutoplay();
-    return;
-  }
-  if (frames.value.length <= 1) {
-    return;
-  }
-
-  isAutoplaying.value = true;
-  autoplayHandle.value = window.setInterval(() => {
-    if (isSceneTransitioning.value) {
-      return;
-    }
-    if (frameIndex.value >= frames.value.length - 1) {
-      stopAutoplay();
-      return;
-    }
-    stepForward();
-  }, settings.value.autoPlayDelayMs);
-}
+const { isAutoplaying, stopAutoplay, toggleAutoplay } = useAutoplay({
+  frames,
+  frameIndex,
+  isSceneTransitioning,
+  autoPlayDelayMs,
+  stepForward,
+});
 //#endregion
 
 //#region 8) watchers
@@ -764,16 +798,6 @@ watch(
 watch(displayedSprites, (nextSprites, previousSprites) => {
   previousDisplayedSprites.value = previousSprites ?? [];
 });
-
-watch(
-  () => settings.value.autoPlayDelayMs,
-  () => {
-    if (isAutoplaying.value) {
-      stopAutoplay();
-      toggleAutoplay();
-    }
-  },
-);
 //#endregion
 
 //#region 9) lifecycle
