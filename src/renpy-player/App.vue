@@ -294,7 +294,7 @@ const stageStyle = computed(() => ({
   '--renpy-camera-transition-ms': `${settings.value.cameraTransitionMs}ms`,
 }));
 
-function getCameraSettings(transform?: 'closeup' | 'medium') {
+function resolveActiveCameraPreset(transform?: 'closeup' | 'medium') {
   if (transform === 'closeup') {
     return {
       backgroundScale: settings.value.closeupBackgroundScale,
@@ -319,7 +319,7 @@ function getCameraSettings(transform?: 'closeup' | 'medium') {
 }
 
 const backgroundStyle = computed(() => {
-  const camera = getCameraSettings(currentFrame.value?.cameraTransform);
+  const camera = resolveActiveCameraPreset(currentFrame.value?.cameraTransform);
   return {
     transform: `scale(${camera.backgroundScale})`,
     transformOrigin: 'center center',
@@ -328,7 +328,7 @@ const backgroundStyle = computed(() => {
 });
 
 const spriteStyle = computed(() => {
-  const camera = getCameraSettings(currentFrame.value?.cameraTransform);
+  const camera = resolveActiveCameraPreset(currentFrame.value?.cameraTransform);
   return {
     '--sprite-scale': camera.spriteScale.toString(),
     '--sprite-y': `${camera.spriteY}%`,
