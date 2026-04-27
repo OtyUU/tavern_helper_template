@@ -643,9 +643,35 @@ function applyFrame(next: PlayerFrame | null, prev: PlayerFrame | null): void {
   isSceneTransitioning.value = false;
 }
 
+function useScenePresentationWatchers(deps: {
+  currentFrame: { value: PlayerFrame | null };
+  displayedSprites: { value: PlayerFrame['sprites'] };
+  previousDisplayedSprites: { value: PlayerFrame['sprites'] };
+  applyFrame: (next: PlayerFrame | null, prev: PlayerFrame | null) => void;
+}) {
+  watch(
+    () => deps.currentFrame.value,
+    (nextFrame, previousFrame) => {
+      deps.applyFrame(nextFrame, previousFrame ?? null);
+    },
+    { immediate: true },
+  );
+
+  watch(deps.displayedSprites, (_nextSprites, previousSprites) => {
+    deps.previousDisplayedSprites.value = previousSprites ?? [];
+  });
+}
+
 const sceneFadeStyle = computed(() => ({
   animationDuration: `${settings.value.sceneTransitionMs}ms`,
 }));
+
+useScenePresentationWatchers({
+  currentFrame,
+  displayedSprites,
+  previousDisplayedSprites,
+  applyFrame,
+});
 //#endregion
 
 //#region 7) sprite visibility transitions (enter/leave)
@@ -728,6 +754,16 @@ function useAutoplay(deps: {
         toggleAutoplay();
       }
     },
+  );
+
+  watch(
+    () => deps.frames.value.length,
+    frameCount => {
+      if (frameCount <= 1) {
+        stopAutoplay();
+      }
+    },
+    { immediate: true },
   );
 
   return {
@@ -825,24 +861,9 @@ watch(
   frames,
   nextFrames => {
     frameIndex.value = nextFrames.length === 0 ? 0 : Math.min(frameIndex.value, nextFrames.length - 1);
-    if (nextFrames.length <= 1) {
-      stopAutoplay();
-    }
   },
   { immediate: true },
 );
-
-watch(
-  () => currentFrame.value,
-  (nextFrame, previousFrame) => {
-    applyFrame(nextFrame, previousFrame ?? null);
-  },
-  { immediate: true },
-);
-
-watch(displayedSprites, (nextSprites, previousSprites) => {
-  previousDisplayedSprites.value = previousSprites ?? [];
-});
 //#endregion
 
 //#region 9) lifecycle
