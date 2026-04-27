@@ -164,10 +164,15 @@
 //#region 1) imports/types/internal composables
 import { storeToRefs } from 'pinia';
 import { buildFrames, getInitialState, parseScriptFromMessage } from './parser';
-import { useAutoplay, useReducedMotion, useSpriteVisibilityTransitions } from './player-composables';
+import {
+  useAutoplay,
+  useReducedMotion,
+  useScenePresentation,
+  useSpriteVisibilityTransitions,
+} from './player-composables';
 import { useRenpyPlayerSettingsStore } from './settings';
 import SmartImage from './SmartImage.vue';
-import type { PlayerAsset, PlayerFrame } from './types';
+import type { PlayerFrame } from './types';
 import type { Ref } from 'vue';
 
 // Smoke checklist:
@@ -193,16 +198,28 @@ const currentMessage = ref<ChatMessage | null>(null);
 const historyTrigger = ref(0);
 const frameIndex = ref(0);
 const manualMessageId = ref<number | null>(settings.value.preferredMessageId);
-const displayedBackground = ref<PlayerAsset | undefined>();
-const displayedSprites = ref<PlayerFrame['sprites']>([]);
-const previousDisplayedSprites = ref<PlayerFrame['sprites']>([]);
-const isSceneTransitioning = ref(false);
-const transitionTimeouts = ref<number[]>([]);
 const {
   prefersReducedMotion,
   setup: setupReducedMotion,
   cleanup: cleanupReducedMotion,
 } = useReducedMotion();
+let prepareSpriteVisibilityEffectsForScenePresentation = (
+  _previousSprites: PlayerFrame['sprites'],
+  _nextSprites: PlayerFrame['sprites'],
+) => {};
+const {
+  displayedBackground,
+  displayedSprites,
+  previousDisplayedSprites,
+  isSceneTransitioning,
+  clearTransitionTimeouts,
+  applyFrame,
+} = useScenePresentation(
+  settings,
+  (previousSprites, nextSprites) => {
+    prepareSpriteVisibilityEffectsForScenePresentation(previousSprites, nextSprites);
+  },
+);
 const {
   onSpriteEnter,
   onSpriteLeave,
@@ -213,6 +230,7 @@ const {
   isSceneTransitioning,
   prefersReducedMotion,
 );
+prepareSpriteVisibilityEffectsForScenePresentation = prepareSpriteVisibilityEffects;
 const lifecycleStopList: Array<() => void> = [];
 
 const maxMessageId = computed(() => getLastMessageId());
@@ -378,71 +396,6 @@ function getSpriteSwapDuration(sprite: PlayerFrame['sprites'][number]): number {
   }
 
   return settings.value.poseChangeMs;
-}
-
-function clearTransitionTimeouts() {
-  transitionTimeouts.value.forEach(timeoutId => window.clearTimeout(timeoutId));
-  transitionTimeouts.value = [];
-}
-
-function updateDisplayedSprites(nextSprites: PlayerFrame['sprites']) {
-  const previousSprites = displayedSprites.value ?? [];
-  const next = nextSprites ?? [];
-  prepareSpriteVisibilityEffects(previousSprites, next);
-  displayedSprites.value = next;
-}
-
-function resetDisplayedState() {
-  displayedBackground.value = undefined;
-  updateDisplayedSprites([]);
-  isSceneTransitioning.value = false;
-}
-
-function applyDisplayedFrame(frame: PlayerFrame) {
-  displayedBackground.value = frame.background;
-  updateDisplayedSprites(frame.sprites ?? []);
-  isSceneTransitioning.value = false;
-}
-
-function applyFrame(next: PlayerFrame | null, prev: PlayerFrame | null): void {
-  clearTransitionTimeouts();
-
-  if (!next) {
-    resetDisplayedState();
-    return;
-  }
-
-  if (!prev || next.index === prev.index) {
-    applyDisplayedFrame(next);
-    return;
-  }
-
-  if (next.isNewScene) {
-    if (settings.value.sceneTransitionMs <= 0) {
-      applyDisplayedFrame(next);
-      return;
-    }
-
-    const halfDuration = Math.floor(settings.value.sceneTransitionMs / 2);
-    const fullDuration = settings.value.sceneTransitionMs;
-    isSceneTransitioning.value = true;
-
-    const midpointHandle = window.setTimeout(() => {
-      displayedBackground.value = next.background;
-      updateDisplayedSprites([]);
-    }, halfDuration);
-
-    const finalHandle = window.setTimeout(() => {
-      updateDisplayedSprites(next.sprites ?? []);
-      isSceneTransitioning.value = false;
-      transitionTimeouts.value = [];
-    }, fullDuration);
-
-    transitionTimeouts.value = [midpointHandle, finalHandle];
-    return;
-  }
-
-  applyDisplayedFrame(next);
 }
 
 function useScenePresentationWatchers(

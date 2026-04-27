@@ -1,6 +1,6 @@
 import { ref, watch } from 'vue';
 import type { Ref } from 'vue';
-import type { PlayerFrame } from './types';
+import type { PlayerAsset, PlayerFrame } from './types';
 
 type SpriteVisibilityEffect = 'fade' | 'none';
 
@@ -8,6 +8,10 @@ type SpriteVisibilityTransitionSettings = {
   spriteVisibilityEffect: string;
   spriteEnterMs: number;
   spriteExitMs: number;
+};
+
+type ScenePresentationSettings = {
+  sceneTransitionMs: number;
 };
 
 export function useReducedMotion() {
@@ -273,5 +277,93 @@ export function useAutoplay(
     isAutoplaying,
     stopAutoplay,
     toggleAutoplay,
+  };
+}
+
+export function useScenePresentation(
+  settings: Ref<ScenePresentationSettings>,
+  prepareSpriteVisibilityEffects: (
+    previousSprites: PlayerFrame['sprites'],
+    nextSprites: PlayerFrame['sprites'],
+  ) => void,
+) {
+  const displayedBackground = ref<PlayerAsset | undefined>();
+  const displayedSprites = ref<PlayerFrame['sprites']>([]);
+  const previousDisplayedSprites = ref<PlayerFrame['sprites']>([]);
+  const isSceneTransitioning = ref(false);
+  const transitionTimeouts = ref<number[]>([]);
+
+  function clearTransitionTimeouts() {
+    transitionTimeouts.value.forEach(timeoutId => window.clearTimeout(timeoutId));
+    transitionTimeouts.value = [];
+  }
+
+  function updateDisplayedSprites(nextSprites: PlayerFrame['sprites']) {
+    const previousSprites = displayedSprites.value ?? [];
+    const next = nextSprites ?? [];
+    prepareSpriteVisibilityEffects(previousSprites, next);
+    displayedSprites.value = next;
+  }
+
+  function resetDisplayedState() {
+    displayedBackground.value = undefined;
+    updateDisplayedSprites([]);
+    isSceneTransitioning.value = false;
+  }
+
+  function applyDisplayedFrame(frame: PlayerFrame) {
+    displayedBackground.value = frame.background;
+    updateDisplayedSprites(frame.sprites ?? []);
+    isSceneTransitioning.value = false;
+  }
+
+  function applyFrame(next: PlayerFrame | null, prev: PlayerFrame | null): void {
+    clearTransitionTimeouts();
+
+    if (!next) {
+      resetDisplayedState();
+      return;
+    }
+
+    if (!prev || next.index === prev.index) {
+      applyDisplayedFrame(next);
+      return;
+    }
+
+    if (next.isNewScene) {
+      if (settings.value.sceneTransitionMs <= 0) {
+        applyDisplayedFrame(next);
+        return;
+      }
+
+      const halfDuration = Math.floor(settings.value.sceneTransitionMs / 2);
+      const fullDuration = settings.value.sceneTransitionMs;
+      isSceneTransitioning.value = true;
+
+      const midpointHandle = window.setTimeout(() => {
+        displayedBackground.value = next.background;
+        updateDisplayedSprites([]);
+      }, halfDuration);
+
+      const finalHandle = window.setTimeout(() => {
+        updateDisplayedSprites(next.sprites ?? []);
+        isSceneTransitioning.value = false;
+        transitionTimeouts.value = [];
+      }, fullDuration);
+
+      transitionTimeouts.value = [midpointHandle, finalHandle];
+      return;
+    }
+
+    applyDisplayedFrame(next);
+  }
+
+  return {
+    displayedBackground,
+    displayedSprites,
+    previousDisplayedSprites,
+    isSceneTransitioning,
+    clearTransitionTimeouts,
+    applyFrame,
   };
 }
