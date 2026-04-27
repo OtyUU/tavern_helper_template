@@ -70,14 +70,14 @@
       <div class="renpy-player__transport">
         <button
           class="vn-btn" type="button" title="Restart"
-          :disabled="!frames.length || frameIndex <= 0 || isSceneTransitioning"
+          :disabled="!canRestart"
           @click="jumpToStart"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
         </button>
         <button
           class="vn-btn" type="button" title="Previous"
-          :disabled="!frames.length || frameIndex <= 0 || isSceneTransitioning"
+          :disabled="!canStepBack"
           @click="stepBackward"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
@@ -86,7 +86,7 @@
           class="vn-btn vn-btn--autoplay" type="button"
           :title="isAutoplaying ? 'Pause' : 'Autoplay'"
           :class="{ 'vn-btn--active': isAutoplaying }"
-          :disabled="frames.length <= 1 || isSceneTransitioning"
+          :disabled="!canToggleAutoplay"
           @click="toggleAutoplay"
         >
           <svg v-if="isAutoplaying" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg>
@@ -95,7 +95,7 @@
         </button>
         <button
           class="vn-btn" type="button" title="Next"
-          :disabled="!frames.length || frameIndex >= frames.length - 1 || isSceneTransitioning"
+          :disabled="!canStepForward"
           @click="stepForward"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
@@ -103,7 +103,7 @@
       </div>
 
       <div class="renpy-player__status">
-        <span v-if="frames.length" class="vn-pill">{{ frameIndex + 1 }}/{{ frames.length }}</span>
+        <span v-if="hasFrames" class="vn-pill">{{ frameIndex + 1 }}/{{ frames.length }}</span>
         <span v-if="settings.followLatestPlayable" class="vn-pill vn-pill--auto">Auto</span>
       </div>
 
@@ -246,6 +246,13 @@ const frames = computed(() => {
 });
 
 const currentFrame = computed(() => frames.value[frameIndex.value] ?? null);
+
+const hasFrames = computed(() => frames.value.length > 0);
+const isBusy = computed(() => isSceneTransitioning.value);
+const canRestart = computed(() => hasFrames.value && frameIndex.value > 0 && !isBusy.value);
+const canStepBack = computed(() => hasFrames.value && frameIndex.value > 0 && !isBusy.value);
+const canStepForward = computed(() => hasFrames.value && frameIndex.value < frames.value.length - 1 && !isBusy.value);
+const canToggleAutoplay = computed(() => frames.value.length > 1 && !isBusy.value);
 //#endregion
 
 //#region 4) stage geometry + presentation computeds
