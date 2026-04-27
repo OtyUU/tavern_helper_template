@@ -403,6 +403,55 @@ function updateDisplayedSprites(nextSprites: PlayerFrame['sprites']) {
   displayedSprites.value = next;
 }
 
+function applyFrame(next: PlayerFrame | null, prev: PlayerFrame | null): void {
+  clearTransitionTimeouts();
+
+  if (!next) {
+    displayedBackground.value = undefined;
+    updateDisplayedSprites([]);
+    isSceneTransitioning.value = false;
+    return;
+  }
+
+  if (!prev || next.index === prev.index) {
+    displayedBackground.value = next.background;
+    updateDisplayedSprites(next.sprites ?? []);
+    isSceneTransitioning.value = false;
+    return;
+  }
+
+  if (next.isNewScene) {
+    if (settings.value.sceneTransitionMs <= 0) {
+      displayedBackground.value = next.background;
+      updateDisplayedSprites(next.sprites ?? []);
+      isSceneTransitioning.value = false;
+      return;
+    }
+
+    const halfDuration = Math.floor(settings.value.sceneTransitionMs / 2);
+    const fullDuration = settings.value.sceneTransitionMs;
+    isSceneTransitioning.value = true;
+
+    const midpointHandle = window.setTimeout(() => {
+      displayedBackground.value = next.background;
+      updateDisplayedSprites([]);
+    }, halfDuration);
+
+    const finalHandle = window.setTimeout(() => {
+      updateDisplayedSprites(next.sprites ?? []);
+      isSceneTransitioning.value = false;
+      transitionTimeouts.value = [];
+    }, fullDuration);
+
+    transitionTimeouts.value = [midpointHandle, finalHandle];
+    return;
+  }
+
+  displayedBackground.value = next.background;
+  updateDisplayedSprites(next.sprites ?? []);
+  isSceneTransitioning.value = false;
+}
+
 const sceneFadeStyle = computed(() => ({
   animationDuration: `${settings.value.sceneTransitionMs}ms`,
 }));
@@ -675,52 +724,7 @@ watch(
 watch(
   () => currentFrame.value,
   (nextFrame, previousFrame) => {
-    clearTransitionTimeouts();
-
-    if (!nextFrame) {
-      displayedBackground.value = undefined;
-      updateDisplayedSprites([]);
-      isSceneTransitioning.value = false;
-      return;
-    }
-
-    if (!previousFrame || nextFrame.index === previousFrame.index) {
-      displayedBackground.value = nextFrame.background;
-      updateDisplayedSprites(nextFrame.sprites ?? []);
-      isSceneTransitioning.value = false;
-      return;
-    }
-
-    if (nextFrame.isNewScene) {
-      if (settings.value.sceneTransitionMs <= 0) {
-        displayedBackground.value = nextFrame.background;
-        updateDisplayedSprites(nextFrame.sprites ?? []);
-        isSceneTransitioning.value = false;
-        return;
-      }
-
-      const halfDuration = Math.floor(settings.value.sceneTransitionMs / 2);
-      const fullDuration = settings.value.sceneTransitionMs;
-      isSceneTransitioning.value = true;
-
-      const midpointHandle = window.setTimeout(() => {
-        displayedBackground.value = nextFrame.background;
-        updateDisplayedSprites([]);
-      }, halfDuration);
-
-      const finalHandle = window.setTimeout(() => {
-        updateDisplayedSprites(nextFrame.sprites ?? []);
-        isSceneTransitioning.value = false;
-        transitionTimeouts.value = [];
-      }, fullDuration);
-
-      transitionTimeouts.value = [midpointHandle, finalHandle];
-      return;
-    }
-
-    displayedBackground.value = nextFrame.background;
-    updateDisplayedSprites(nextFrame.sprites ?? []);
-    isSceneTransitioning.value = false;
+    applyFrame(nextFrame, previousFrame ?? null);
   },
   { immediate: true },
 );
