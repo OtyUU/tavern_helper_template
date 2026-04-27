@@ -151,17 +151,17 @@
 
 <script setup lang="ts">
 // TOC
-// 1) imports/types
+// 1) imports/types/internal composables
 // 2) store/settings wiring
 // 3) core derived model (parsedScript/frames/currentFrame)
 // 4) stage geometry + presentation computeds
-// 5) actions (selection, transport)
-// 6) scene presentation (apply frame -> displayed*)
-// 7) sprite visibility transitions (enter/leave)
-// 8) watchers
+// 5) scene presentation (apply frame -> displayed*)
+// 6) sprite visibility transitions (enter/leave)
+// 7) actions (selection, transport + autoplay)
+// 8) cross-cutting watchers
 // 9) lifecycle
 
-//#region 1) imports/types
+//#region 1) imports/types/internal composables
 import { storeToRefs } from 'pinia';
 import { buildFrames, getInitialState, parseScriptFromMessage } from './parser';
 import { useRenpyPlayerSettingsStore } from './settings';
@@ -538,7 +538,7 @@ const renderedSprites = computed(() =>
 );
 //#endregion
 
-//#region 6) scene presentation (apply frame -> displayed*)
+//#region 5) scene presentation (apply frame -> displayed*)
 function getSpriteAnchorX(position: 'left' | 'center' | 'right'): number {
   const center = settings.value.spriteCenterX;
   const spacing = settings.value.spriteSideSpacing;
@@ -674,7 +674,7 @@ useScenePresentationWatchers({
 });
 //#endregion
 
-//#region 7) sprite visibility transitions (enter/leave)
+//#region 6) sprite visibility transitions (enter/leave)
 function getSpriteAnimationClass(animations?: string[]): string | undefined {
   if (!animations?.length) {
     return undefined;
@@ -702,7 +702,7 @@ function getCameraAnimationClass(animations?: string[]): string | undefined {
 }
 //#endregion
 
-//#region 5) actions (selection, transport)
+//#region 7) actions (selection, transport + autoplay)
 function useAutoplay(deps: {
   frames: { value: PlayerFrame[] };
   frameIndex: { value: number };
@@ -841,7 +841,7 @@ const { isAutoplaying, stopAutoplay, toggleAutoplay } = useAutoplay({
 });
 //#endregion
 
-//#region 8) watchers
+//#region 8) cross-cutting watchers
 watch(
   () => [currentMessage.value?.message_id ?? null, currentMessage.value?.message ?? ''],
   (nextSelection, previousSelection) => {
