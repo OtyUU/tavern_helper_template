@@ -196,28 +196,12 @@ const currentMessage = ref<ChatMessage | null>(null);
 const historyTrigger = ref(0);
 const frameIndex = ref(0);
 const manualMessageId = ref<number | null>(settings.value.preferredMessageId);
+const isSceneTransitioning = ref(false);
 const {
   prefersReducedMotion,
   setup: setupReducedMotion,
   cleanup: cleanupReducedMotion,
 } = useReducedMotion();
-let applyPendingSpriteVisibilityEffects: (
-  previousSprites: PlayerFrame['sprites'],
-  nextSprites: PlayerFrame['sprites'],
-) => void = () => {};
-const {
-  displayedBackground,
-  displayedSprites,
-  previousDisplayedSprites,
-  isSceneTransitioning,
-  clearTransitionTimeouts,
-  applyFrame,
-} = useScenePresentation(
-  settings,
-  (previousSprites, nextSprites) => {
-    applyPendingSpriteVisibilityEffects(previousSprites, nextSprites);
-  },
-);
 const {
   onSpriteEnter,
   onSpriteLeave,
@@ -228,9 +212,17 @@ const {
   isSceneTransitioning,
   prefersReducedMotion,
 );
-// Scene presentation needs the transition preparer, but the transition composable also depends on
-// scene-transition state produced by scene presentation. This bridge preserves that wiring order.
-applyPendingSpriteVisibilityEffects = prepareSpriteVisibilityEffects;
+const {
+  displayedBackground,
+  displayedSprites,
+  previousDisplayedSprites,
+  clearTransitionTimeouts,
+  applyFrame,
+} = useScenePresentation(
+  settings,
+  isSceneTransitioning,
+  prepareSpriteVisibilityEffects,
+);
 const lifecycleStopList: Array<() => void> = [];
 
 const maxMessageId = computed(() => getLastMessageId());
@@ -409,10 +401,6 @@ watch(
   },
   { immediate: true },
 );
-
-watch(displayedSprites, (_nextSprites, previousSprites) => {
-  previousDisplayedSprites.value = previousSprites ?? [];
-});
 //#endregion
 
 //#region 6) sprite visibility transitions (enter/leave)

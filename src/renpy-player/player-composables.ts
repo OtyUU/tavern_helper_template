@@ -282,6 +282,7 @@ export function useAutoplay(
 
 export function useScenePresentation(
   settings: Ref<ScenePresentationSettings>,
+  isSceneTransitioning: Ref<boolean>,
   prepareSpriteVisibilityEffects: (
     previousSprites: PlayerFrame['sprites'],
     nextSprites: PlayerFrame['sprites'],
@@ -290,8 +291,11 @@ export function useScenePresentation(
   const displayedBackground = ref<PlayerAsset | undefined>();
   const displayedSprites = ref<PlayerFrame['sprites']>([]);
   const previousDisplayedSprites = ref<PlayerFrame['sprites']>([]);
-  const isSceneTransitioning = ref(false);
   const transitionTimeouts = ref<number[]>([]);
+
+  watch(displayedSprites, (_nextSprites, previousSprites) => {
+    previousDisplayedSprites.value = previousSprites ?? [];
+  });
 
   function clearTransitionTimeouts() {
     transitionTimeouts.value.forEach(timeoutId => window.clearTimeout(timeoutId));
@@ -362,7 +366,6 @@ export function useScenePresentation(
     displayedBackground,
     displayedSprites,
     previousDisplayedSprites,
-    isSceneTransitioning,
     clearTransitionTimeouts,
     applyFrame,
   };
