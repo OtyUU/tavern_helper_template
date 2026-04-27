@@ -15,6 +15,12 @@ import type {
 } from './types';
 
 type ParsedLines = Pick<ParsedScript, 'commands' | 'ignoredLines'>;
+type ParsedShowTail = {
+  outfit?: string;
+  blush?: true;
+  transforms?: string[];
+  tokens: string[];
+};
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
@@ -73,6 +79,46 @@ function splitTransforms(raw: string): string[] {
 
 function hasOnlyAllowedTransforms(transforms: string[], allowed: Set<string>): boolean {
   return transforms.every(transform => allowed.has(transform.trim().toLowerCase()));
+}
+
+function parseShowTail(rest: string, allowedTransforms: Set<string>): ParsedShowTail | null {
+  let remaining = rest.trim();
+
+  // 1. Extract trailing "at <t1>, <t2>, ..." clause (must be last)
+  let transforms: string[] = [];
+  const atMatch = remaining.match(/\bat\s+(.+)$/i);
+  if (atMatch) {
+    transforms = splitTransforms(atMatch[1]);
+    if (transforms.length === 0 || !hasOnlyAllowedTransforms(transforms, allowedTransforms)) {
+      return null;
+    }
+    remaining = remaining.slice(0, atMatch.index).trim();
+  }
+
+  // 2. Extract "in <outfit>"
+  let outfit: string | undefined;
+  const inMatch = remaining.match(/\bin\s+([A-Za-z0-9_-]+)\b/i);
+  if (inMatch) {
+    outfit = inMatch[1];
+    remaining = (remaining.slice(0, inMatch.index) + remaining.slice((inMatch.index ?? 0) + inMatch[0].length)).trim();
+  }
+
+  // 3. Extract "blush" keyword
+  let blush = false;
+  remaining = remaining.replace(/\bblush\b/gi, () => {
+    blush = true;
+    return '';
+  }).trim();
+
+  // 4. Remaining tokens = pose/expression candidates
+  const tokens = remaining.split(/\s+/).map(token => token.trim()).filter(Boolean);
+
+  return {
+    outfit,
+    blush: blush || undefined,
+    transforms: transforms.length > 0 ? transforms : undefined,
+    tokens,
+  };
 }
 
 function categorizeCameraTransforms(transforms: string[]): {
@@ -175,43 +221,47 @@ function parseLines(source: string): ParsedLines {
       const showMatch = line.match(/^show\s+([A-Za-z0-9_-]+)(.*)?$/i);
       if (showMatch) {
         const character = showMatch[1];
-        let rest = (showMatch[2] ?? '').trim();
-
-        // 1. Extract trailing "at <t1>, <t2>, ..." clause (must be last)
-        let transforms: string[] = [];
-        const atMatch = rest.match(/\bat\s+(.+)$/i);
-        if (atMatch) {
-          transforms = splitTransforms(atMatch[1]);
-          if (transforms.length === 0 || !hasOnlyAllowedTransforms(transforms, SHOW_TRANSFORMS)) {
-            ignoredLines.push(line);
-            return;
-          }
-          rest = rest.slice(0, atMatch.index).trim();
+        const parsed = parseShowTail((showMatch[2] ?? '').trim(), SHOW_TRANSFORMS);
+        if (parsed === null) {
+          ignoredLines.push(line);
+          return;
         }
-
-        // 2. Extract "in <outfit>"
-        let outfit: string | undefined;
-        const inMatch = rest.match(/\bin\s+([A-Za-z0-9_-]+)\b/i);
-        if (inMatch) {
-          outfit = inMatch[1];
-          rest = (rest.slice(0, inMatch.index) + rest.slice((inMatch.index ?? 0) + inMatch[0].length)).trim();
-        }
-
-        // 3. Extract "blush" keyword
-        let blush = false;
-        rest = rest.replace(/\bblush\b/gi, () => { blush = true; return ''; }).trim();
-
-        // 4. Remaining tokens = pose/expression candidates
-        const tokens = rest.split(/\s+/).map(t => t.trim()).filter(Boolean);
 
         commands.push({
           type: 'show',
           raw: line,
           character,
-          outfit,
-          blush: blush || undefined,
-          transforms: transforms.length > 0 ? transforms : undefined,
-          tokens,
+          ...parsed,
+        });
+        return;
+      }
+
+      // say with attrs: <speaker> <attrs...> "<text>"
+      const sayWithAttrsMatch = line.match(
+        /^([A-Za-z_][\w-]*)\s+(.+?)\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/
+      );
+      if (sayWithAttrsMatch) {
+        const speaker = sayWithAttrsMatch[1];
+        const attrsRest = sayWithAttrsMatch[2];
+        const text = unquote(sayWithAttrsMatch[3]);
+        const parsed = parseShowTail(attrsRest, SHOW_TRANSFORMS);
+
+        if (parsed === null) {
+          ignoredLines.push(line);
+          return;
+        }
+
+        commands.push({
+          type: 'show',
+          raw: line,
+          character: speaker,
+          ...parsed,
+        });
+        commands.push({
+          type: 'dialogue',
+          raw: line,
+          speaker,
+          text,
         });
         return;
       }

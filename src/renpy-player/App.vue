@@ -53,7 +53,7 @@
             <p>Select a chat message containing a Ren'Py-like block to preview it here.</p>
             <p>
               The parser currently understands <code>scene living_room night</code>, <code>show chinami base neutral</code>,
-              and dialogue lines like <code>c "Hi!!"</code>.
+              say-with-attributes lines like <code>eileen happy "Hi"</code>, and dialogue lines like <code>c "Hi!!"</code>.
             </p>
           </div>
 
