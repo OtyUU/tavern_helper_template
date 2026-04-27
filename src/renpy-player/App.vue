@@ -173,7 +173,6 @@ import {
 import { useRenpyPlayerSettingsStore } from './settings';
 import SmartImage from './SmartImage.vue';
 import type { PlayerFrame } from './types';
-import type { Ref } from 'vue';
 
 // Smoke checklist:
 // - mounts above #chat; latest/manual message selection works
@@ -398,35 +397,21 @@ function getSpriteSwapDuration(sprite: PlayerFrame['sprites'][number]): number {
   return settings.value.poseChangeMs;
 }
 
-function useScenePresentationWatchers(
-  currentFrameRef: Ref<PlayerFrame | null>,
-  displayedSpritesRef: Ref<PlayerFrame['sprites']>,
-  previousDisplayedSpritesRef: Ref<PlayerFrame['sprites']>,
-  applyFrameFn: (next: PlayerFrame | null, prev: PlayerFrame | null) => void,
-) {
-  watch(
-    () => currentFrameRef.value,
-    (nextFrame, previousFrame) => {
-      applyFrameFn(nextFrame, previousFrame ?? null);
-    },
-    { immediate: true },
-  );
-
-  watch(displayedSpritesRef, (_nextSprites, previousSprites) => {
-    previousDisplayedSpritesRef.value = previousSprites ?? [];
-  });
-}
-
 const sceneFadeStyle = computed(() => ({
   animationDuration: `${settings.value.sceneTransitionMs}ms`,
 }));
 
-useScenePresentationWatchers(
-  currentFrame,
-  displayedSprites,
-  previousDisplayedSprites,
-  applyFrame,
+watch(
+  () => currentFrame.value,
+  (nextFrame, previousFrame) => {
+    applyFrame(nextFrame, previousFrame ?? null);
+  },
+  { immediate: true },
 );
+
+watch(displayedSprites, (_nextSprites, previousSprites) => {
+  previousDisplayedSprites.value = previousSprites ?? [];
+});
 //#endregion
 
 //#region 6) sprite visibility transitions (enter/leave)
