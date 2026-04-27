@@ -67,6 +67,12 @@
           </div>
 
           <div class="renpy-player-settings__field">
+            <label>Scene transition (ms)</label>
+            <input v-model.number="settings.sceneTransitionMs" class="text_pole" type="number" min="0" max="2000" step="50" />
+            <small>Fade-to-black duration when changing scenes with <code>scene</code> command.</small>
+          </div>
+
+          <div class="renpy-player-settings__field">
             <label>Expression change (ms)</label>
             <input v-model.number="settings.expressionChangeMs" class="text_pole" type="number" min="0" max="2000" step="10" />
             <small>Short crossfade for expression or blush-only sprite changes.</small>
@@ -76,6 +82,27 @@
             <label>Pose change (ms)</label>
             <input v-model.number="settings.poseChangeMs" class="text_pole" type="number" min="0" max="2000" step="10" />
             <small>Faster dissolve for big silhouette changes like new poses or outfits.</small>
+          </div>
+
+          <div class="renpy-player-settings__field">
+            <label>Sprite enter (ms)</label>
+            <input v-model.number="settings.spriteEnterMs" class="text_pole" type="number" min="0" max="2000" step="10" />
+            <small>Fade-in duration when a character first appears.</small>
+          </div>
+
+          <div class="renpy-player-settings__field">
+            <label>Sprite exit (ms)</label>
+            <input v-model.number="settings.spriteExitMs" class="text_pole" type="number" min="0" max="2000" step="10" />
+            <small>Fade-out duration when a character is hidden or cleared.</small>
+          </div>
+
+          <div class="renpy-player-settings__field">
+            <label>Visibility effect</label>
+            <select v-model="settings.spriteVisibilityEffect" class="text_pole">
+              <option value="fade">fade</option>
+              <option value="none">none</option>
+            </select>
+            <small>Use <code>none</code> for instant sprite show/hide.</small>
           </div>
         </div>
       </section>

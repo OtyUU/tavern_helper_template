@@ -1,26 +1,39 @@
 <template>
   <section class="renpy-player">
-    <!-- Outer wrapper: fills panel width, locks height from settings -->
+    <!-- Wrapper: full width, fixed height (stageHeight), centers the 16:9 stage and shows letter/pillar-box bars -->
     <div class="renpy-player__stage-wrap" :style="stageWrapStyle">
-      <!-- Fixed 16:9 viewport: always stageHeight px × (stageHeight×16/9) px -->
+      <!-- Fixed ~16:9 viewport: height = stageHeight, width = round(stageHeight*16/9) -->
       <div class="renpy-player__stage" :style="stageStyle">
         <div class="renpy-player__scene-layer" :class="cameraAnimationClass">
-          <!-- Background image fills the fixed 16:9 viewport -->
+          <div
+            v-if="isSceneTransitioning"
+            class="renpy-player__scene-fade"
+            :style="sceneFadeStyle"
+          ></div>
+
+          <!-- Background covers the viewport (object-fit: cover) and is additionally scaled by camera presets -->
           <SmartImage
-            v-if="currentFrame?.background?.candidates?.length"
+            v-if="displayedBackground?.candidates?.length"
             class="renpy-player__background"
             :style="backgroundStyle"
-            :candidates="currentFrame.background.candidates"
-            :alt="currentFrame.background.description"
+            :candidates="displayedBackground.candidates"
+            :alt="displayedBackground.description"
           />
 
           <div class="renpy-player__gradient"></div>
 
-          <div class="renpy-player__sprite-layer">
+          <TransitionGroup
+            tag="div"
+            class="renpy-player__sprite-layer"
+            :css="false"
+            @enter="onSpriteEnter"
+            @leave="onSpriteLeave"
+          >
             <div
               v-for="sprite in renderedSprites"
               :key="sprite.renderKey"
               class="renpy-player__sprite-shell"
+              :data-sprite-id="sprite.id"
               :style="sprite.shellStyle"
             >
               <SmartImage
@@ -32,7 +45,7 @@
                 :swap-duration-ms="sprite.swapDurationMs"
               />
             </div>
-          </div>
+          </TransitionGroup>
         </div>
 
         <div class="renpy-player__viewport">
@@ -54,18 +67,17 @@
 
 
     <div class="renpy-player__footer">
-      <!-- Left: transport controls -->
       <div class="renpy-player__transport">
         <button
           class="vn-btn" type="button" title="Restart"
-          :disabled="!frames.length || frameIndex <= 0"
+          :disabled="!frames.length || frameIndex <= 0 || isSceneTransitioning"
           @click="jumpToStart"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
         </button>
         <button
           class="vn-btn" type="button" title="Previous"
-          :disabled="!frames.length || frameIndex <= 0"
+          :disabled="!frames.length || frameIndex <= 0 || isSceneTransitioning"
           @click="stepBackward"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
@@ -74,7 +86,7 @@
           class="vn-btn vn-btn--autoplay" type="button"
           :title="isAutoplaying ? 'Pause' : 'Autoplay'"
           :class="{ 'vn-btn--active': isAutoplaying }"
-          :disabled="frames.length <= 1"
+          :disabled="frames.length <= 1 || isSceneTransitioning"
           @click="toggleAutoplay"
         >
           <svg v-if="isAutoplaying" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg>
@@ -83,20 +95,18 @@
         </button>
         <button
           class="vn-btn" type="button" title="Next"
-          :disabled="!frames.length || frameIndex >= frames.length - 1"
+          :disabled="!frames.length || frameIndex >= frames.length - 1 || isSceneTransitioning"
           @click="stepForward"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
         </button>
       </div>
 
-      <!-- Center: status pills -->
       <div class="renpy-player__status">
         <span v-if="frames.length" class="vn-pill">{{ frameIndex + 1 }}/{{ frames.length }}</span>
         <span v-if="settings.followLatestPlayable" class="vn-pill vn-pill--auto">Auto</span>
       </div>
 
-      <!-- Right: source actions -->
       <div class="renpy-player__actions">
         <button class="vn-btn" type="button" title="Jump to latest script" @click="useLatestPlayable">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18z"/></svg>
@@ -144,6 +154,9 @@ import { storeToRefs } from 'pinia';
 import { buildFrames, getInitialState, parseScriptFromMessage } from './parser';
 import { useRenpyPlayerSettingsStore } from './settings';
 import SmartImage from './SmartImage.vue';
+import type { PlayerAsset, PlayerFrame } from './types';
+
+type SpriteVisibilityEffect = 'fade' | 'none';
 
 const settingsStore = useRenpyPlayerSettingsStore();
 const {
@@ -160,6 +173,15 @@ const frameIndex = ref(0);
 const isAutoplaying = ref(false);
 const manualMessageId = ref<number | null>(settings.value.preferredMessageId);
 const autoplayHandle = ref<number | null>(null);
+const displayedBackground = ref<PlayerAsset | undefined>();
+const displayedSprites = ref<PlayerFrame['sprites']>([]);
+const previousDisplayedSprites = ref<PlayerFrame['sprites']>([]);
+const isSceneTransitioning = ref(false);
+const transitionTimeouts = ref<number[]>([]);
+const prefersReducedMotion = ref(false);
+const spriteVisibilityAnimations = new WeakMap<Element, Animation>();
+const pendingEnterEffectById = new Map<string, SpriteVisibilityEffect>();
+const pendingExitEffectById = new Map<string, SpriteVisibilityEffect>();
 
 const maxMessageId = computed(() => getLastMessageId());
 
@@ -198,16 +220,15 @@ const frames = computed(() => {
 });
 
 const currentFrame = computed(() => frames.value[frameIndex.value] ?? null);
-const previousFrame = ref<(typeof currentFrame.value) | null>(null);
 
 const stageWidth = computed(() => Math.round(settings.value.stageHeight * 16 / 9));
 
-// Outer wrapper: fills panel width, clips to stageHeight
+// Stage wrapper: fixed height from settings; CSS handles full width + centering + black bars
 const stageWrapStyle = computed(() => ({
   height: `${settings.value.stageHeight}px`,
 }));
 
-// Inner viewport: fixed 16:9, centered horizontally inside the wrapper
+// Inner stage: fixed ~16:9 box; wrapper flex centers it both horizontally and vertically
 const stageStyle = computed(() => ({
   width: `${stageWidth.value}px`,
   height: `${settings.value.stageHeight}px`,
@@ -263,7 +284,7 @@ const cameraDiagnosticsLabel = computed(() => {
 });
 
 const renderedSprites = computed(() =>
-  (currentFrame.value?.sprites ?? []).map(sprite => ({
+  (displayedSprites.value ?? []).map(sprite => ({
     ...sprite,
     renderKey: sprite.id,
     animationClass: getSpriteAnimationClass(sprite.animations),
@@ -290,8 +311,8 @@ function getSpriteShellStyle(position: 'left' | 'center' | 'right') {
   };
 }
 
-function getSpriteSwapDuration(sprite: NonNullable<typeof currentFrame.value>['sprites'][number]): number {
-  const previousSprite = previousFrame.value?.sprites.find(candidate => candidate.id === sprite.id);
+function getSpriteSwapDuration(sprite: PlayerFrame['sprites'][number]): number {
+  const previousSprite = previousDisplayedSprites.value.find(candidate => candidate.id === sprite.id);
   if (!previousSprite?.asset || !sprite.asset || previousSprite.asset.description === sprite.asset.description) {
     return 0;
   }
@@ -314,6 +335,40 @@ function getSpriteSwapDuration(sprite: NonNullable<typeof currentFrame.value>['s
 
   return settings.value.poseChangeMs;
 }
+
+function clearTransitionTimeouts() {
+  transitionTimeouts.value.forEach(timeoutId => window.clearTimeout(timeoutId));
+  transitionTimeouts.value = [];
+}
+
+function updateDisplayedSprites(nextSprites: PlayerFrame['sprites']) {
+  const previousSprites = displayedSprites.value ?? [];
+  const next = nextSprites ?? [];
+  const previousIds = new Set(previousSprites.map(sprite => sprite.id));
+  const nextIds = new Set(next.map(sprite => sprite.id));
+  const defaultEffect = settings.value.spriteVisibilityEffect as SpriteVisibilityEffect;
+
+  pendingEnterEffectById.clear();
+  pendingExitEffectById.clear();
+
+  nextIds.forEach(id => {
+    if (!previousIds.has(id)) {
+      pendingEnterEffectById.set(id, defaultEffect);
+    }
+  });
+
+  previousIds.forEach(id => {
+    if (!nextIds.has(id)) {
+      pendingExitEffectById.set(id, defaultEffect);
+    }
+  });
+
+  displayedSprites.value = next;
+}
+
+const sceneFadeStyle = computed(() => ({
+  animationDuration: `${settings.value.sceneTransitionMs}ms`,
+}));
 
 function getSpriteAnimationClass(animations?: string[]): string | undefined {
   if (!animations?.length) {
@@ -339,6 +394,110 @@ function getCameraAnimationClass(animations?: string[]): string | undefined {
     return 'renpy-player__scene-layer--shake';
   }
   return undefined;
+}
+
+function cleanupSpriteVisibilityAnimation(el: Element) {
+  const animation = spriteVisibilityAnimations.get(el);
+  if (animation) {
+    animation.cancel();
+    spriteVisibilityAnimations.delete(el);
+  }
+}
+
+function resolveSpriteVisibilityEffect(
+  spriteId: string | undefined,
+  kind: 'enter' | 'exit',
+): SpriteVisibilityEffect {
+  const fallback = settings.value.spriteVisibilityEffect as SpriteVisibilityEffect;
+  if (!spriteId) {
+    return fallback;
+  }
+
+  const sourceMap = kind === 'enter' ? pendingEnterEffectById : pendingExitEffectById;
+  const effect = sourceMap.get(spriteId) ?? fallback;
+  sourceMap.delete(spriteId);
+  return effect;
+}
+
+function resolveSpriteVisibilityDuration(baseDurationMs: number, effect: SpriteVisibilityEffect): number {
+  if (isSceneTransitioning.value || prefersReducedMotion.value || effect === 'none') {
+    return 0;
+  }
+  return Math.max(0, baseDurationMs);
+}
+
+function onSpriteEnter(el: Element, done: () => void) {
+  const node = el as HTMLElement;
+  cleanupSpriteVisibilityAnimation(node);
+
+  let finished = false;
+  const complete = () => {
+    if (finished) {
+      return;
+    }
+    finished = true;
+    spriteVisibilityAnimations.delete(node);
+    node.style.opacity = '';
+    done();
+  };
+
+  const spriteId = node.dataset.spriteId;
+  const effect = resolveSpriteVisibilityEffect(spriteId, 'enter');
+  const duration = resolveSpriteVisibilityDuration(settings.value.spriteEnterMs, effect);
+  node.style.opacity = '0';
+
+  if (duration <= 0) {
+    complete();
+    return;
+  }
+
+  try {
+    const animation = node.animate(
+      [{ opacity: 0 }, { opacity: 1 }],
+      { duration, easing: 'ease-out', fill: 'forwards' },
+    );
+    spriteVisibilityAnimations.set(node, animation);
+    animation.addEventListener('finish', complete, { once: true });
+    animation.addEventListener('cancel', complete, { once: true });
+  } catch {
+    complete();
+  }
+}
+
+function onSpriteLeave(el: Element, done: () => void) {
+  const node = el as HTMLElement;
+  cleanupSpriteVisibilityAnimation(node);
+
+  let finished = false;
+  const complete = () => {
+    if (finished) {
+      return;
+    }
+    finished = true;
+    spriteVisibilityAnimations.delete(node);
+    done();
+  };
+
+  const spriteId = node.dataset.spriteId;
+  const effect = resolveSpriteVisibilityEffect(spriteId, 'exit');
+  const duration = resolveSpriteVisibilityDuration(settings.value.spriteExitMs, effect);
+
+  if (duration <= 0) {
+    complete();
+    return;
+  }
+
+  try {
+    const animation = node.animate(
+      [{ opacity: 1 }, { opacity: 0 }],
+      { duration, easing: 'ease-out', fill: 'forwards' },
+    );
+    spriteVisibilityAnimations.set(node, animation);
+    animation.addEventListener('finish', complete, { once: true });
+    animation.addEventListener('cancel', complete, { once: true });
+  } catch {
+    complete();
+  }
 }
 
 function findLatestPlayableMessageId(): number | null {
@@ -388,18 +547,30 @@ function applyManualMessageId() {
 }
 
 function jumpToStart() {
+  if (isSceneTransitioning.value) {
+    return;
+  }
   frameIndex.value = 0;
 }
 
 function stepBackward() {
+  if (isSceneTransitioning.value) {
+    return;
+  }
   frameIndex.value = Math.max(0, frameIndex.value - 1);
 }
 
 function stepForward() {
+  if (isSceneTransitioning.value) {
+    return;
+  }
   frameIndex.value = Math.min(frames.value.length - 1, frameIndex.value + 1);
 }
 
 function toggleAutoplay() {
+  if (isSceneTransitioning.value) {
+    return;
+  }
   if (isAutoplaying.value) {
     stopAutoplay();
     return;
@@ -410,6 +581,9 @@ function toggleAutoplay() {
 
   isAutoplaying.value = true;
   autoplayHandle.value = window.setInterval(() => {
+    if (isSceneTransitioning.value) {
+      return;
+    }
     if (frameIndex.value >= frames.value.length - 1) {
       stopAutoplay();
       return;
@@ -445,11 +619,61 @@ watch(
 );
 
 watch(
-  currentFrame,
-  (_, previous) => {
-    previousFrame.value = previous ?? null;
+  () => currentFrame.value,
+  (nextFrame, previousFrame) => {
+    clearTransitionTimeouts();
+
+    if (!nextFrame) {
+      displayedBackground.value = undefined;
+      updateDisplayedSprites([]);
+      isSceneTransitioning.value = false;
+      return;
+    }
+
+    if (!previousFrame || nextFrame.index === previousFrame.index) {
+      displayedBackground.value = nextFrame.background;
+      updateDisplayedSprites(nextFrame.sprites ?? []);
+      isSceneTransitioning.value = false;
+      return;
+    }
+
+    if (nextFrame.isNewScene) {
+      if (settings.value.sceneTransitionMs <= 0) {
+        displayedBackground.value = nextFrame.background;
+        updateDisplayedSprites(nextFrame.sprites ?? []);
+        isSceneTransitioning.value = false;
+        return;
+      }
+
+      const halfDuration = Math.floor(settings.value.sceneTransitionMs / 2);
+      const fullDuration = settings.value.sceneTransitionMs;
+      isSceneTransitioning.value = true;
+
+      const midpointHandle = window.setTimeout(() => {
+        displayedBackground.value = nextFrame.background;
+        updateDisplayedSprites([]);
+      }, halfDuration);
+
+      const finalHandle = window.setTimeout(() => {
+        updateDisplayedSprites(nextFrame.sprites ?? []);
+        isSceneTransitioning.value = false;
+        transitionTimeouts.value = [];
+      }, fullDuration);
+
+      transitionTimeouts.value = [midpointHandle, finalHandle];
+      return;
+    }
+
+    displayedBackground.value = nextFrame.background;
+    updateDisplayedSprites(nextFrame.sprites ?? []);
+    isSceneTransitioning.value = false;
   },
+  { immediate: true },
 );
+
+watch(displayedSprites, (nextSprites, previousSprites) => {
+  previousDisplayedSprites.value = previousSprites ?? [];
+});
 
 watch(
   () => settings.value.autoPlayDelayMs,
@@ -462,6 +686,13 @@ watch(
 );
 
 onMounted(() => {
+  const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const handleReducedMotionChange = () => {
+    prefersReducedMotion.value = reducedMotionQuery.matches;
+  };
+  handleReducedMotionChange();
+  reducedMotionQuery.addEventListener('change', handleReducedMotionChange);
+
   syncMessageSelection();
 
   const stopList = [
@@ -475,8 +706,12 @@ onMounted(() => {
   ];
 
   onBeforeUnmount(() => {
+    reducedMotionQuery.removeEventListener('change', handleReducedMotionChange);
     stopList.forEach(stop => stop());
     stopAutoplay();
+    clearTransitionTimeouts();
+    pendingEnterEffectById.clear();
+    pendingExitEffectById.clear();
   });
 });
 </script>
@@ -532,13 +767,12 @@ onMounted(() => {
 }
 
 .renpy-player__background {
-  /* Fill the fixed viewport exactly — no bleed, no scaling surprises */
+  /* Cover the viewport (may crop); camera zoom is applied via transform */
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-/* ─── Inner viewport fills the fixed stage ───────────────────────────────── */
 .renpy-player__viewport {
   z-index: 2;
 }
@@ -602,6 +836,21 @@ onMounted(() => {
 
 .renpy-player__scene-layer--shake {
   animation: renpy-scene-shake 0.45s ease-in-out 1;
+}
+
+.renpy-player__scene-fade {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: #000;
+  pointer-events: none;
+  animation: renpy-scene-fade ease-in-out;
+}
+
+@keyframes renpy-scene-fade {
+  0% { opacity: 0; }
+  50% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 @keyframes renpy-bounce {
@@ -733,7 +982,6 @@ onMounted(() => {
   padding: 0.28rem 0.38rem;
 }
 
-/* ─── Status pills ──────────────────────────────────────────────────────── */
 .renpy-player__status {
   display: flex;
   gap: 0.3rem;
@@ -757,7 +1005,6 @@ onMounted(() => {
   color: color-mix(in srgb, var(--SmartThemeQuoteColor) 90%, white);
 }
 
-/* ─── Msg ID input ──────────────────────────────────────────────────────── */
 .renpy-player__input-group {
   display: inline-flex;
   gap: 0.3rem;
@@ -802,14 +1049,10 @@ onMounted(() => {
   overflow-wrap: anywhere;
 }
 
-/* ─── Legacy compat ─────────────────────────────────────────────────────── */
-.menu_button--active {
-  outline: 1px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 65%, white);
-}
 
 /* ─── Responsive ────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
-  /* On narrow screens: hide labels in action buttons, show only icons */
+  /* On narrow screens: hide labels in the right-side actions area (icons only there) */
   .renpy-player__actions .vn-btn--autoplay span,
   .renpy-player__actions .vn-btn span {
     display: none;

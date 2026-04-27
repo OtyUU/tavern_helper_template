@@ -89,6 +89,8 @@ export type PlayerAsset = {
 
 export type PlayerFrame = {
   index: number;
+  /** True when this frame is emitted immediately after processing at least one `scene` command */
+  isNewScene?: boolean;
   background?: PlayerAsset;
   cameraTransform?: CameraTransform;
   /** One-shot camera animations for this frame (not persistent) */

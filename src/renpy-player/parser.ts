@@ -177,7 +177,7 @@ function parseLines(source: string): ParsedLines {
         const character = showMatch[1];
         let rest = (showMatch[2] ?? '').trim();
 
-        // 1. Extract "at <t1>, <t2>, ..." from the end
+        // 1. Extract trailing "at <t1>, <t2>, ..." clause (must be last)
         let transforms: string[] = [];
         const atMatch = rest.match(/\bat\s+(.+)$/i);
         if (atMatch) {
@@ -246,27 +246,33 @@ function parseLines(source: string): ParsedLines {
   return { commands, ignoredLines };
 }
 
-function scoreCandidate(source: string): number {
-  return parseLines(source).commands.length;
-}
-
 export function parseScriptFromMessage(message: string): ParsedScript {
-  const fencedBlocks = [...message.matchAll(/```(?:[\w-]+)?\s*([\s\S]*?)```/g)]
-    .map(match => match[1].trim())
-    .filter(Boolean);
+  // Prefer the first fenced code block if it contains any recognized commands; otherwise parse the whole message.
+  const firstFencedMatch = message.match(/```(?:[\w-]+)?\s*([\s\S]*?)```/);
+  const firstFenced = firstFencedMatch?.[1]?.trim();
 
-  const bestFenced = fencedBlocks
-    .map(block => ({ block, score: scoreCandidate(block) }))
-    .sort((lhs, rhs) => rhs.score - lhs.score)[0];
-
-  if (bestFenced && bestFenced.score > 0) {
-    const parsed = parseLines(bestFenced.block);
-    return { source: 'fenced', scriptText: bestFenced.block, commands: parsed.commands, ignoredLines: parsed.ignoredLines };
+  if (firstFenced) {
+    const parsedFenced = parseLines(firstFenced);
+    if (parsedFenced.commands.length > 0) {
+      return {
+        source: 'fenced',
+        scriptText: firstFenced,
+        commands: parsedFenced.commands,
+        ignoredLines: parsedFenced.ignoredLines,
+      };
+    }
+    // else: fall through to whole-message parse (may include later fenced blocks and outside text)
   }
 
+  // Fallback: parse the entire message (includes later fenced blocks and outside text).
   const parsedWholeMessage = parseLines(message);
   if (parsedWholeMessage.commands.length > 0 || parsedWholeMessage.ignoredLines.length > 0) {
-    return { source: 'message', scriptText: message.trim(), commands: parsedWholeMessage.commands, ignoredLines: parsedWholeMessage.ignoredLines };
+    return {
+      source: 'message',
+      scriptText: message.trim(),
+      commands: parsedWholeMessage.commands,
+      ignoredLines: parsedWholeMessage.ignoredLines,
+    };
   }
 
   return { source: 'none', scriptText: '', commands: [], ignoredLines: [] };
@@ -352,8 +358,9 @@ function getCharacterConfig(
 }
 
 /**
- * Resolve remaining tokens (0–2) into pose and expression.
- * Single-token: check poseTokens to disambiguate.
+ * Resolve remaining tokens (0..N) into pose and expression.
+ * If 2+ tokens are present, only the first two are used (pose, expression).
+ * If 1 token is present, check poseTokens to disambiguate.
  */
 function resolveTokens(
   tokens: string[],
@@ -496,7 +503,7 @@ class StageState {
   apply(cmd: ScriptCommand, options: FrameBuildOptions): void {
     switch (cmd.type) {
       case 'scene': {
-        const bg = cmd.background || this.backgroundName;
+        const bg = cmd.background;
         const seg = cmd.segment ?? this.backgroundSegment;
         this.backgroundName = bg;
         this.backgroundSegment = seg;
@@ -614,6 +621,7 @@ export function buildFrames(parsed: ParsedScript, options: FrameBuildOptions): P
   const frames: PlayerFrame[] = [];
   const stage = new StageState(options, options.initialState);
   let dirty = false;
+  let isNewScene = false;
 
   for (const cmd of parsed.commands) {
     if (cmd.type === 'dialogue') {
@@ -621,20 +629,27 @@ export function buildFrames(parsed: ParsedScript, options: FrameBuildOptions): P
         index: frames.length,
         speaker: getSpeakerLabel(cmd.speaker),
         text: cmd.text,
+        isNewScene,
         ...stage.flush(),
       });
+      isNewScene = false;
       dirty = false;
       continue;
+    }
+
+    if (cmd.type === 'scene') {
+      isNewScene = true;
     }
 
     stage.apply(cmd, options);
     dirty = true;
   }
 
-  // Preserve original fallback ordering: "no dialogue" case first.
+  // If there are visuals but no dialogue, emit a single preview frame.
   if (frames.length === 0 && stage.hasVisuals()) {
     frames.push({
       index: 0,
+      isNewScene,
       speaker: parsed.commands.length > 0 ? 'Scene Preview' : 'Active Scene',
       text: parsed.commands.length > 0
         ? 'The script updated the stage but did not contain any dialogue lines.'
@@ -644,6 +659,7 @@ export function buildFrames(parsed: ParsedScript, options: FrameBuildOptions): P
   } else if (dirty && stage.hasVisuals()) {
     frames.push({
       index: frames.length,
+      isNewScene,
       speaker: 'Scene Preview',
       text: 'The last command only changed the scene or sprite state.',
       ...stage.flush(),
