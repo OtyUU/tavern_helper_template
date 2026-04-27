@@ -150,6 +150,18 @@
 </template>
 
 <script setup lang="ts">
+// TOC
+// 1) imports/types
+// 2) store/settings wiring
+// 3) core derived model (parsedScript/frames/currentFrame)
+// 4) stage geometry + presentation computeds
+// 5) actions (selection, transport)
+// 6) scene presentation (apply frame -> displayed*)
+// 7) sprite visibility transitions (enter/leave)
+// 8) watchers
+// 9) lifecycle
+
+//#region 1) imports/types
 import { storeToRefs } from 'pinia';
 import { buildFrames, getInitialState, parseScriptFromMessage } from './parser';
 import { useRenpyPlayerSettingsStore } from './settings';
@@ -163,7 +175,9 @@ import type { PlayerAsset, PlayerFrame } from './types';
 // - camera transforms/animations apply; settings persist after reload
 
 type SpriteVisibilityEffect = 'fade' | 'none';
+//#endregion
 
+//#region 2) store/settings wiring
 const settingsStore = useRenpyPlayerSettingsStore();
 const {
   settings,
@@ -172,7 +186,9 @@ const {
   characterSpriteConfig,
   characterSpriteConfigError,
 } = storeToRefs(settingsStore);
+//#endregion
 
+//#region 3) core derived model (parsedScript/frames/currentFrame)
 const currentMessage = ref<ChatMessage | null>(null);
 const historyTrigger = ref(0);
 const frameIndex = ref(0);
@@ -226,7 +242,9 @@ const frames = computed(() => {
 });
 
 const currentFrame = computed(() => frames.value[frameIndex.value] ?? null);
+//#endregion
 
+//#region 4) stage geometry + presentation computeds
 const stageWidth = computed(() => Math.round(settings.value.stageHeight * 16 / 9));
 
 // Stage wrapper: fixed height from settings; CSS handles full width + centering + black bars
@@ -298,7 +316,9 @@ const renderedSprites = computed(() =>
     swapDurationMs: getSpriteSwapDuration(sprite),
   })),
 );
+//#endregion
 
+//#region 6) scene presentation (apply frame -> displayed*)
 function getSpriteAnchorX(position: 'left' | 'center' | 'right'): number {
   const center = settings.value.spriteCenterX;
   const spacing = settings.value.spriteSideSpacing;
@@ -375,7 +395,9 @@ function updateDisplayedSprites(nextSprites: PlayerFrame['sprites']) {
 const sceneFadeStyle = computed(() => ({
   animationDuration: `${settings.value.sceneTransitionMs}ms`,
 }));
+//#endregion
 
+//#region 7) sprite visibility transitions (enter/leave)
 function getSpriteAnimationClass(animations?: string[]): string | undefined {
   if (!animations?.length) {
     return undefined;
@@ -505,7 +527,9 @@ function onSpriteLeave(el: Element, done: () => void) {
     complete();
   }
 }
+//#endregion
 
+//#region 5) actions (selection, transport)
 function findLatestPlayableMessageId(): number | null {
   for (let messageId = getLastMessageId(); messageId >= 0; messageId -= 1) {
     const message = getChatMessages(messageId)[0];
@@ -597,7 +621,9 @@ function toggleAutoplay() {
     stepForward();
   }, settings.value.autoPlayDelayMs);
 }
+//#endregion
 
+//#region 8) watchers
 watch(
   () => [currentMessage.value?.message_id ?? null, currentMessage.value?.message ?? ''],
   (nextSelection, previousSelection) => {
@@ -690,7 +716,9 @@ watch(
     }
   },
 );
+//#endregion
 
+//#region 9) lifecycle
 onMounted(() => {
   const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   const handleReducedMotionChange = () => {
@@ -720,6 +748,7 @@ onMounted(() => {
     pendingExitEffectById.clear();
   });
 });
+//#endregion
 </script>
 
 <style lang="scss" scoped>
