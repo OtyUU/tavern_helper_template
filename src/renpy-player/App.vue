@@ -10,7 +10,6 @@
             class="renpy-player__scene-fade"
             :style="sceneFadeStyle"
           ></div>
-
           <!-- Background covers the viewport (object-fit: cover) and is additionally scaled by camera presets -->
           <SmartImage
             v-if="displayedBackground?.candidates?.length"
@@ -19,9 +18,7 @@
             :candidates="displayedBackground.candidates"
             :alt="displayedBackground.description"
           />
-
           <div class="renpy-player__gradient"></div>
-
           <TransitionGroup
             tag="div"
             class="renpy-player__sprite-layer"
@@ -47,7 +44,6 @@
             </div>
           </TransitionGroup>
         </div>
-
         <div class="renpy-player__viewport">
           <div v-if="!currentFrame" class="renpy-player__empty-state">
             <p>Select a chat message containing a Ren'Py-like block to preview it here.</p>
@@ -56,95 +52,103 @@
               say-with-attributes lines like <code>eileen happy "Hi"</code>, and dialogue lines like <code>c "Hi!!"</code>.
             </p>
           </div>
-
-          <div v-else class="renpy-player__dialogue">
-            <div class="renpy-player__speaker">{{ currentFrame.speaker ?? 'Narrator' }}</div>
-            <div class="renpy-player__text">{{ currentFrame.text ?? 'No dialogue on this frame.' }}</div>
-          </div>
+          <template v-else>
+            <div class="renpy-player__dialogue-bar">
+              <div class="renpy-player__speaker">{{ currentFrame.speaker ?? 'Narrator' }}</div>
+              <div class="renpy-player__text">{{ currentFrame.text ?? 'No dialogue on this frame.' }}</div>
+            </div>
+            <div class="renpy-player__hud-grid" @click.stop>
+              <button
+                class="renpy-player__hud-button" type="button" title="Restart"
+                :disabled="!canRestart"
+                @click.stop="jumpToStart"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+                <span class="renpy-player__hud-label">RESET</span>
+              </button>
+              <button
+                class="renpy-player__hud-button" type="button" title="Previous"
+                :disabled="!canStepBack"
+                @click.stop="stepBackward"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+                <span class="renpy-player__hud-label">PREV</span>
+              </button>
+              <button
+                class="renpy-player__hud-button" type="button" title="Jump to latest script"
+                @click.stop="useLatestPlayable"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18z"/></svg>
+                <span class="renpy-player__hud-label">LIVE</span>
+              </button>
+              <button
+                class="renpy-player__hud-button" type="button"
+                :title="isAutoplaying ? 'Pause' : 'Autoplay'"
+                :class="{ 'renpy-player__hud-button--active': isAutoplaying }"
+                :disabled="!canToggleAutoplay"
+                @click.stop="toggleAutoplay"
+              >
+                <svg v-if="isAutoplaying" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg>
+                <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                <span class="renpy-player__hud-label">AUTO</span>
+              </button>
+              <button
+                class="renpy-player__hud-button" type="button" title="Next"
+                :disabled="!canStepForward"
+                @click.stop="stepForward"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+                <span class="renpy-player__hud-label">NEXT</span>
+              </button>
+              <div class="renpy-player__hud-tile renpy-player__hud-tile--status">
+                <span class="renpy-player__hud-label">MODE</span>
+                <strong>{{ settings.followLatestPlayable ? 'FOLLOW' : 'MANUAL' }}</strong>
+              </div>
+              <label
+                class="renpy-player__hud-tile renpy-player__hud-input"
+                title="Jump to message ID"
+                @click.stop
+              >
+                <span class="renpy-player__hud-label">MSG ID</span>
+                <input
+                  v-model.number="manualMessageId"
+                  class="renpy-player__msg-input"
+                  type="number" min="0" :max="maxMessageId"
+                  @click.stop
+                  @change="applyManualMessageId"
+                />
+              </label>
+              <div v-if="hasFrames" class="renpy-player__hud-tile renpy-player__hud-tile--counter">
+                <span class="renpy-player__hud-label">FRAME</span>
+                <strong>{{ frameIndex + 1 }}/{{ frames.length }}</strong>
+              </div>
+            </div>
+          </template>
+          <details class="renpy-player__diagnostics" @click.stop>
+            <summary @click.stop>Diagnostics</summary>
+            <div class="renpy-player__diagnostics-grid">
+              <p><strong>Source:</strong> {{ parsedScript.source }}</p>
+              <p><strong>Max message id:</strong> {{ maxMessageId }}</p>
+              <p><strong>Camera:</strong> {{ cameraDiagnosticsLabel }}</p>
+              <template v-for="sprite in currentFrame?.sprites" :key="sprite.id">
+                <p><strong>Sprite {{ sprite.id }} candidates:</strong></p>
+                <ul style="margin:0; padding-left:1rem; font-size:0.75rem;">
+                  <li v-for="c in sprite.asset?.candidates" :key="c">{{ c }}</li>
+                  <li v-if="!sprite.asset?.candidates?.length">None</li>
+                </ul>
+              </template>
+              <p v-if="!currentFrame?.sprites?.length"><strong>Sprites:</strong> None</p>
+              <p><strong>Background candidates:</strong></p>
+              <ul style="margin:0; padding-left:1rem; font-size:0.75rem;">
+                <li v-for="c in currentFrame?.background?.candidates" :key="c">{{ c }}</li>
+                <li v-if="!currentFrame?.background?.candidates?.length">None</li>
+              </ul>
+              <p v-if="characterSpriteConfigError"><strong>Character config JSON:</strong> {{ characterSpriteConfigError }}</p>
+            </div>
+          </details>
         </div>
       </div>
     </div>
-
-    <div class="renpy-player__footer">
-      <div class="renpy-player__transport">
-        <button
-          class="vn-btn" type="button" title="Restart"
-          :disabled="!canRestart"
-          @click="jumpToStart"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
-        </button>
-        <button
-          class="vn-btn" type="button" title="Previous"
-          :disabled="!canStepBack"
-          @click="stepBackward"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
-        </button>
-        <button
-          class="vn-btn vn-btn--autoplay" type="button"
-          :title="isAutoplaying ? 'Pause' : 'Autoplay'"
-          :class="{ 'vn-btn--active': isAutoplaying }"
-          :disabled="!canToggleAutoplay"
-          @click="toggleAutoplay"
-        >
-          <svg v-if="isAutoplaying" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg>
-          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-          <span>{{ isAutoplaying ? 'Pause' : 'Play' }}</span>
-        </button>
-        <button
-          class="vn-btn" type="button" title="Next"
-          :disabled="!canStepForward"
-          @click="stepForward"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-        </button>
-      </div>
-
-      <div class="renpy-player__status">
-        <span v-if="hasFrames" class="vn-pill">{{ frameIndex + 1 }}/{{ frames.length }}</span>
-        <span v-if="settings.followLatestPlayable" class="vn-pill vn-pill--auto">Auto</span>
-      </div>
-
-      <div class="renpy-player__actions">
-        <button class="vn-btn" type="button" title="Jump to latest script" @click="useLatestPlayable">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18z"/></svg>
-          <span>Latest</span>
-        </button>
-        <label class="renpy-player__input-group" title="Jump to message ID">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="opacity:.6"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
-          <input
-            v-model.number="manualMessageId"
-            class="text_pole renpy-player__msg-input"
-            type="number" min="0" :max="maxMessageId"
-            @change="applyManualMessageId"
-          />
-        </label>
-      </div>
-    </div>
-
-    <details class="renpy-player__diagnostics">
-      <summary>Diagnostics</summary>
-      <div class="renpy-player__diagnostics-grid">
-        <p><strong>Source:</strong> {{ parsedScript.source }}</p>
-        <p><strong>Max message id:</strong> {{ maxMessageId }}</p>
-        <p><strong>Camera:</strong> {{ cameraDiagnosticsLabel }}</p>
-        <template v-for="sprite in currentFrame?.sprites" :key="sprite.id">
-          <p><strong>Sprite «{{ sprite.id }}» candidates:</strong></p>
-          <ul style="margin:0; padding-left:1rem; font-size:0.75rem;">
-            <li v-for="c in sprite.asset?.candidates" :key="c">{{ c }}</li>
-            <li v-if="!sprite.asset?.candidates?.length">None</li>
-          </ul>
-        </template>
-        <p v-if="!currentFrame?.sprites?.length"><strong>Sprites:</strong> None</p>
-        <p><strong>Background candidates:</strong></p>
-        <ul style="margin:0; padding-left:1rem; font-size:0.75rem;">
-          <li v-for="c in currentFrame?.background?.candidates" :key="c">{{ c }}</li>
-          <li v-if="!currentFrame?.background?.candidates?.length">None</li>
-        </ul>
-        <p v-if="characterSpriteConfigError"><strong>Character config JSON:</strong> {{ characterSpriteConfigError }}</p>
-      </div>
-    </details>
   </section>
 </template>
 
@@ -568,12 +572,21 @@ onBeforeUnmount(() => {
 //#endregion
 </script>
 
+<style lang="scss">
+@font-face {
+  font-family: 'RenpyRounded';
+  src:
+    local('M PLUS Rounded 1c'),
+    local('Kosugi Maru'),
+    local('Hiragino Maru Gothic ProN'),
+    local('Yu Gothic UI'),
+    local('Meiryo');
+  font-display: swap;
+}
+</style>
 <style lang="scss" scoped>
-/* ─── Container ─────────────────────────────────────────────────────────── */
+/* ????????? Container ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????? */
 .renpy-player {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
   margin-bottom: 1rem;
   border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 65%, transparent);
   border-radius: 18px;
@@ -584,27 +597,23 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(18px);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.32);
 }
-
-/* ─── Stage wrapper: fills panel, clips to stageHeight, shows black bars ── */
+/* ????????? Stage wrapper: fills panel, clips to stageHeight, shows black bars ?????? */
 .renpy-player__stage-wrap {
   position: relative;
   width: 100%;
   flex-shrink: 0;
   overflow: hidden;
-  background: #000; /* letterbox / pillarbox bars */
+  background: #000;
   display: flex;
-  align-items: center;       /* vertical centering (letterbox) */
-  justify-content: center;   /* horizontal centering (pillarbox) */
+  align-items: center;
+  justify-content: center;
 }
-
-/* ─── Fixed 16:9 VN viewport ─────────────────────────────────────────────── */
+/* ????????? Fixed 16:9 VN viewport ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????? */
 .renpy-player__stage {
-  /* width & height come from stageStyle computed prop (JS) */
   position: relative;
   overflow: hidden;
   flex-shrink: 0;
 }
-
 .renpy-player__scene-layer,
 .renpy-player__background,
 .renpy-player__gradient,
@@ -613,32 +622,26 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
 }
-
 .renpy-player__scene-layer {
   z-index: 1;
 }
-
 .renpy-player__background {
-  /* Cover the viewport (may crop); camera zoom is applied via transform */
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-
 .renpy-player__viewport {
-  z-index: 2;
+  z-index: 50;
+  pointer-events: none;
 }
-
 .renpy-player__sprite-layer {
   z-index: 1;
 }
-
 .renpy-player__gradient {
   background:
     linear-gradient(180deg, rgba(0, 0, 0, 0.04) 0%, rgba(0, 0, 0, 0.38) 55%, rgba(0, 0, 0, 0.86) 100%),
     radial-gradient(circle at top, rgba(255, 255, 255, 0.10), transparent 50%);
 }
-
 .renpy-player__sprite-shell {
   inset: auto auto 0 0;
   position: absolute;
@@ -651,7 +654,6 @@ onBeforeUnmount(() => {
   z-index: 1;
   transition: left var(--renpy-camera-transition-ms) ease;
 }
-
 .renpy-player__sprite {
   display: block;
   width: 100%;
@@ -665,19 +667,16 @@ onBeforeUnmount(() => {
   transform-origin: center bottom;
   transition: transform var(--renpy-camera-transition-ms) ease;
 }
-
 @keyframes renpy-shake {
   0%, 100% { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)) translateX(0); }
-  20%       { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)) translateX(-6px); }
-  40%       { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)) translateX(6px); }
-  60%       { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)) translateX(-4px); }
-  80%       { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)) translateX(4px); }
+  20% { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)) translateX(-6px); }
+  40% { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)) translateX(6px); }
+  60% { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)) translateX(-4px); }
+  80% { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)) translateX(4px); }
 }
-
 .renpy-player__sprite--shake {
   animation: renpy-shake 0.45s ease-in-out 1;
 }
-
 @keyframes renpy-scene-shake {
   0%, 100% { transform: translateX(0); }
   20% { transform: translateX(-8px); }
@@ -685,11 +684,9 @@ onBeforeUnmount(() => {
   60% { transform: translateX(-5px); }
   80% { transform: translateX(5px); }
 }
-
 .renpy-player__scene-layer--shake {
   animation: renpy-scene-shake 0.45s ease-in-out 1;
 }
-
 .renpy-player__scene-fade {
   position: absolute;
   inset: 0;
@@ -698,65 +695,73 @@ onBeforeUnmount(() => {
   pointer-events: none;
   animation: renpy-scene-fade ease-in-out;
 }
-
 @keyframes renpy-scene-fade {
   0% { opacity: 0; }
   50% { opacity: 1; }
   100% { opacity: 0; }
 }
-
 @keyframes renpy-bounce {
   0%, 100% { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)); }
   30% { transform: scale(var(--sprite-scale)) translateY(calc(var(--sprite-y) - 20px)); }
   55% { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)); }
   75% { transform: scale(var(--sprite-scale)) translateY(calc(var(--sprite-y) - 8px)); }
 }
-
 .renpy-player__sprite--bounce {
   animation: renpy-bounce 0.4s ease-out 1;
 }
-
 @keyframes renpy-pulse {
   0%, 100% { transform: scale(var(--sprite-scale)) translateY(var(--sprite-y)); }
   50% { transform: scale(calc(var(--sprite-scale) * 1.06)) translateY(var(--sprite-y)); }
 }
-
 .renpy-player__sprite--pulse {
   animation: renpy-pulse 0.4s ease-in-out 1;
 }
-
-/* ─── Dialogue box ──────────────────────────────────────────────────────── */
-.renpy-player__dialogue {
+/* ????????? Dialogue/HUD overlay ??????????????????????????????????????????????????????????????????????????????????????????????????? */
+.renpy-player__dialogue-bar,
+.renpy-player__hud-grid,
+.renpy-player__diagnostics {
+  pointer-events: auto;
+}
+.renpy-player__dialogue-bar {
   position: absolute;
-  z-index: 2;
-  right: 1rem;
-  bottom: 1rem;
-  left: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  padding: 0.9rem 1.1rem;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  background: rgba(8, 11, 20, 0.82);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255,255,255,0.06);
+  inset: auto 0 0;
+  z-index: 55;
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+  padding: 1.5rem 2rem 1.7rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  background: linear-gradient(to bottom, transparent, rgba(10, 15, 30, 0.7) 20%, rgba(10, 15, 30, 0.85));
+  font-family: 'RenpyRounded', 'Hiragino Maru Gothic ProN', 'Yu Gothic UI', 'Meiryo', sans-serif;
 }
-
 .renpy-player__speaker {
-  font-size: 0.78rem;
+  align-self: center;
+  color: #ff7b93;
+  font-size: 1.5rem;
   font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--SmartThemeQuoteColor) 85%, white);
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  text-shadow:
+    -1px -1px 0 #000,
+     1px -1px 0 #000,
+    -1px 1px 0 #000,
+     1px 1px 0 #000,
+     0 2px 4px rgba(0, 0, 0, 0.6);
 }
-
 .renpy-player__text {
-  font-size: 1rem;
-  line-height: 1.55;
+  color: #fff;
+  font-size: 1.25rem;
+  line-height: 1.6;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-shadow:
+    -1px -1px 0 #000,
+     1px -1px 0 #000,
+    -1px 1px 0 #000,
+     1px 1px 0 #000,
+     0 2px 4px rgba(0, 0, 0, 0.6);
 }
-
 .renpy-player__empty-state {
   position: absolute;
   inset: 0;
@@ -767,147 +772,172 @@ onBeforeUnmount(() => {
   text-align: center;
   opacity: 0.7;
 }
-
 .renpy-player__empty-state p {
   margin: 0;
   max-width: 42rem;
 }
-
-/* ─── Footer / bottom bar ───────────────────────────────────────────────── */
-.renpy-player__footer {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  padding: 0.45rem 0.75rem;
-  border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
-  background: color-mix(in srgb, var(--black30a) 60%, transparent);
+.renpy-player__hud-grid {
+  position: absolute;
+  right: 1rem;
+  bottom: 5rem;
+  z-index: 60;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  width: min(15rem, calc(100% - 2rem));
+}
+.renpy-player__hud-button,
+.renpy-player__hud-tile {
+  min-height: 4rem;
+  padding: 0.45rem 0.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.3);
+  color: #fff;
   backdrop-filter: blur(10px);
-  min-height: 40px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  font-family: 'RenpyRounded', 'Hiragino Maru Gothic ProN', 'Yu Gothic UI', 'Meiryo', sans-serif;
 }
-
-.renpy-player__transport,
-.renpy-player__actions {
+.renpy-player__hud-button {
   display: flex;
-  gap: 0.3rem;
+  flex-direction: column;
   align-items: center;
-}
-
-/* ─── Generic compact button ────────────────────────────────────────────── */
-.vn-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.28rem 0.55rem;
-  border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 55%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 30%, transparent);
-  color: inherit;
-  font-size: 0.78rem;
-  line-height: 1;
+  justify-content: center;
+  gap: 0.2rem;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
-  white-space: nowrap;
-
-  svg { flex-shrink: 0; }
-
-  &:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 55%, transparent);
-    border-color: color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
-  }
-
-  &:disabled {
-    opacity: 0.38;
-    cursor: default;
-  }
+  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
-
-.vn-btn--active {
-  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 70%, transparent) !important;
-  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent) !important;
-  color: color-mix(in srgb, var(--SmartThemeQuoteColor) 90%, white);
+.renpy-player__hud-button svg {
+  flex-shrink: 0;
 }
-
-/* Icon-only buttons (no <span>) get tighter padding */
-.vn-btn:not(:has(span)):not(.vn-btn--autoplay) {
-  padding: 0.28rem 0.38rem;
+.renpy-player__hud-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.35);
 }
-
-.renpy-player__status {
+.renpy-player__hud-button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+.renpy-player__hud-button--active {
+  background: rgba(255, 123, 147, 0.2);
+  border-color: rgba(255, 160, 177, 0.45);
+}
+.renpy-player__hud-tile {
   display: flex;
-  gap: 0.3rem;
-  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.2rem;
+  text-align: center;
 }
-
-.vn-pill {
-  padding: 0.18rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  background: color-mix(in srgb, var(--SmartThemeBorderColor) 28%, transparent);
-  border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
-  white-space: nowrap;
+.renpy-player__hud-tile--status strong,
+.renpy-player__hud-tile--counter strong {
+  font-size: 0.92rem;
+  letter-spacing: 0.04em;
 }
-
-.vn-pill--auto {
-  background: color-mix(in srgb, var(--SmartThemeQuoteColor) 22%, transparent);
-  border-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 50%, transparent);
-  color: color-mix(in srgb, var(--SmartThemeQuoteColor) 90%, white);
-}
-
-.renpy-player__input-group {
-  display: inline-flex;
-  gap: 0.3rem;
-  align-items: center;
-  padding: 0.18rem 0.45rem;
-  border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 45%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 20%, transparent);
+.renpy-player__hud-input {
+  grid-column: span 2;
+  align-items: flex-start;
+  text-align: left;
   cursor: text;
 }
-
+.renpy-player__hud-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
 .renpy-player__msg-input {
-  width: 2.8rem;
+  width: 100%;
   background: transparent;
-  border: none;
-  padding: 0;
-  font-size: 0.78rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 0.3rem 0.4rem;
+  font-size: 0.95rem;
   color: inherit;
   outline: none;
-
-  &::-webkit-inner-spin-button,
-  &::-webkit-outer-spin-button {
-    opacity: 0.5;
-  }
+  margin-top: 0.1rem;
 }
-
-/* ─── Diagnostics ───────────────────────────────────────────────────────── */
+.renpy-player__msg-input::-webkit-inner-spin-button,
+.renpy-player__msg-input::-webkit-outer-spin-button {
+  opacity: 0.5;
+}
+/* ????????? Diagnostics ??????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????? */
 .renpy-player__diagnostics {
-  border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
-  padding: 0.5rem 0.75rem 0.65rem;
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 65;
   font-size: 0.82rem;
+  max-width: min(22rem, calc(100% - 1.5rem));
+  color: #fff;
 }
-
+.renpy-player__diagnostics summary {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(6, 9, 16, 0.72);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  list-style: none;
+}
+.renpy-player__diagnostics summary::-webkit-details-marker {
+  display: none;
+}
 .renpy-player__diagnostics-grid {
   display: grid;
   gap: 0.4rem;
-  padding-top: 0.6rem;
+  margin-top: 0.5rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(6, 9, 16, 0.78);
+  backdrop-filter: blur(10px);
 }
-
 .renpy-player__diagnostics-grid p {
   margin: 0;
   overflow-wrap: anywhere;
 }
-
-
-/* ─── Responsive ────────────────────────────────────────────────────────── */
+/* ????????? Responsive ?????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????? */
 @media (max-width: 900px) {
-  /* On narrow screens: hide labels in the right-side actions area (icons only there) */
-  .renpy-player__actions .vn-btn--autoplay span,
-  .renpy-player__actions .vn-btn span {
-    display: none;
+  .renpy-player__dialogue-bar {
+    grid-template-columns: 132px minmax(0, 1fr);
+    padding: 1.1rem 1rem 1.25rem;
+  }
+  .renpy-player__speaker {
+    font-size: 1.2rem;
+  }
+  .renpy-player__text {
+    font-size: 1.02rem;
+  }
+  .renpy-player__hud-grid {
+    right: 0.65rem;
+    bottom: 4.2rem;
+    width: min(12.5rem, calc(100% - 1.3rem));
+  }
+  .renpy-player__hud-button,
+  .renpy-player__hud-tile {
+    min-height: 3.35rem;
+  }
+  .renpy-player__hud-label {
+    font-size: 0.56rem;
+  }
+}
+@media (max-width: 640px) {
+  .renpy-player__dialogue-bar {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+    padding-right: 7.25rem;
+  }
+  .renpy-player__speaker {
+    align-self: start;
+  }
+  .renpy-player__hud-grid {
+    bottom: 4.8rem;
+    width: 6.2rem;
+    grid-template-columns: 1fr;
+  }
+  .renpy-player__hud-input,
+  .renpy-player__hud-tile--counter {
+    grid-column: auto;
   }
 }
 </style>
