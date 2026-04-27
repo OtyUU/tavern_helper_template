@@ -175,6 +175,36 @@ import type { PlayerAsset, PlayerFrame } from './types';
 // - camera transforms/animations apply; settings persist after reload
 
 type SpriteVisibilityEffect = 'fade' | 'none';
+
+function useReducedMotion() {
+  const prefersReducedMotion = ref(false);
+  let mediaQuery: MediaQueryList | null = null;
+  let handleChange: (() => void) | null = null;
+
+  const setup = () => {
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    mediaQuery = query;
+    handleChange = () => {
+      prefersReducedMotion.value = query.matches;
+    };
+    handleChange();
+    query.addEventListener('change', handleChange);
+  };
+
+  const cleanup = () => {
+    if (mediaQuery && handleChange) {
+      mediaQuery.removeEventListener('change', handleChange);
+    }
+    mediaQuery = null;
+    handleChange = null;
+  };
+
+  return {
+    prefersReducedMotion,
+    setup,
+    cleanup,
+  };
+}
 //#endregion
 
 //#region 2) store/settings wiring
@@ -200,14 +230,16 @@ const displayedSprites = ref<PlayerFrame['sprites']>([]);
 const previousDisplayedSprites = ref<PlayerFrame['sprites']>([]);
 const isSceneTransitioning = ref(false);
 const transitionTimeouts = ref<number[]>([]);
-const prefersReducedMotion = ref(false);
+const {
+  prefersReducedMotion,
+  setup: setupReducedMotion,
+  cleanup: cleanupReducedMotion,
+} = useReducedMotion();
 const spriteVisibilityAnimations = new WeakMap<Element, Animation>();
 const activeSpriteVisibilityAnimations = new Set<Animation>();
 const pendingEnterEffectById = new Map<string, SpriteVisibilityEffect>();
 const pendingExitEffectById = new Map<string, SpriteVisibilityEffect>();
 const lifecycleStopList: Array<() => void> = [];
-let reducedMotionQuery: MediaQueryList | null = null;
-let reducedMotionChangeHandler: (() => void) | null = null;
 
 const maxMessageId = computed(() => getLastMessageId());
 
@@ -746,13 +778,7 @@ watch(
 
 //#region 9) lifecycle
 onMounted(() => {
-  const query = window.matchMedia('(prefers-reduced-motion: reduce)');
-  reducedMotionQuery = query;
-  reducedMotionChangeHandler = () => {
-    prefersReducedMotion.value = query.matches;
-  };
-  reducedMotionChangeHandler();
-  query.addEventListener('change', reducedMotionChangeHandler);
+  setupReducedMotion();
 
   syncMessageSelection();
 
@@ -768,9 +794,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  if (reducedMotionQuery && reducedMotionChangeHandler) {
-    reducedMotionQuery.removeEventListener('change', reducedMotionChangeHandler);
-  }
+  cleanupReducedMotion();
 
   lifecycleStopList.forEach(stop => stop());
   lifecycleStopList.length = 0;
