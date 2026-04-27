@@ -202,8 +202,12 @@ const isSceneTransitioning = ref(false);
 const transitionTimeouts = ref<number[]>([]);
 const prefersReducedMotion = ref(false);
 const spriteVisibilityAnimations = new WeakMap<Element, Animation>();
+const activeSpriteVisibilityAnimations = new Set<Animation>();
 const pendingEnterEffectById = new Map<string, SpriteVisibilityEffect>();
 const pendingExitEffectById = new Map<string, SpriteVisibilityEffect>();
+const lifecycleStopList: Array<() => void> = [];
+let reducedMotionQuery: MediaQueryList | null = null;
+let reducedMotionChangeHandler: (() => void) | null = null;
 
 const maxMessageId = computed(() => getLastMessageId());
 
@@ -427,6 +431,7 @@ function getCameraAnimationClass(animations?: string[]): string | undefined {
 function cleanupSpriteVisibilityAnimation(el: Element) {
   const animation = spriteVisibilityAnimations.get(el);
   if (animation) {
+    activeSpriteVisibilityAnimations.delete(animation);
     animation.cancel();
     spriteVisibilityAnimations.delete(el);
   }
@@ -464,7 +469,11 @@ function onSpriteEnter(el: Element, done: () => void) {
       return;
     }
     finished = true;
-    spriteVisibilityAnimations.delete(node);
+    const animation = spriteVisibilityAnimations.get(node);
+    if (animation) {
+      activeSpriteVisibilityAnimations.delete(animation);
+      spriteVisibilityAnimations.delete(node);
+    }
     node.style.opacity = '';
     done();
   };
@@ -485,6 +494,7 @@ function onSpriteEnter(el: Element, done: () => void) {
       { duration, easing: 'ease-out', fill: 'forwards' },
     );
     spriteVisibilityAnimations.set(node, animation);
+    activeSpriteVisibilityAnimations.add(animation);
     animation.addEventListener('finish', complete, { once: true });
     animation.addEventListener('cancel', complete, { once: true });
   } catch {
@@ -502,7 +512,11 @@ function onSpriteLeave(el: Element, done: () => void) {
       return;
     }
     finished = true;
-    spriteVisibilityAnimations.delete(node);
+    const animation = spriteVisibilityAnimations.get(node);
+    if (animation) {
+      activeSpriteVisibilityAnimations.delete(animation);
+      spriteVisibilityAnimations.delete(node);
+    }
     done();
   };
 
@@ -521,6 +535,7 @@ function onSpriteLeave(el: Element, done: () => void) {
       { duration, easing: 'ease-out', fill: 'forwards' },
     );
     spriteVisibilityAnimations.set(node, animation);
+    activeSpriteVisibilityAnimations.add(animation);
     animation.addEventListener('finish', complete, { once: true });
     animation.addEventListener('cancel', complete, { once: true });
   } catch {
@@ -720,16 +735,17 @@ watch(
 
 //#region 9) lifecycle
 onMounted(() => {
-  const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-  const handleReducedMotionChange = () => {
-    prefersReducedMotion.value = reducedMotionQuery.matches;
+  const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+  reducedMotionQuery = query;
+  reducedMotionChangeHandler = () => {
+    prefersReducedMotion.value = query.matches;
   };
-  handleReducedMotionChange();
-  reducedMotionQuery.addEventListener('change', handleReducedMotionChange);
+  reducedMotionChangeHandler();
+  query.addEventListener('change', reducedMotionChangeHandler);
 
   syncMessageSelection();
 
-  const stopList = [
+  lifecycleStopList.push(
     eventOn(tavern_events.CHAT_CHANGED, syncMessageSelection).stop,
     eventOn(tavern_events.MESSAGE_RECEIVED, syncMessageSelection).stop,
     eventOn(tavern_events.MESSAGE_EDITED, syncMessageSelection).stop,
@@ -737,16 +753,25 @@ onMounted(() => {
     eventOn(tavern_events.MESSAGE_DELETED, syncMessageSelection).stop,
     eventOn(tavern_events.MESSAGE_SWIPED, syncMessageSelection).stop,
     eventOn(tavern_events.MORE_MESSAGES_LOADED, syncMessageSelection).stop,
-  ];
+  );
+});
 
-  onBeforeUnmount(() => {
-    reducedMotionQuery.removeEventListener('change', handleReducedMotionChange);
-    stopList.forEach(stop => stop());
-    stopAutoplay();
-    clearTransitionTimeouts();
-    pendingEnterEffectById.clear();
-    pendingExitEffectById.clear();
-  });
+onBeforeUnmount(() => {
+  if (reducedMotionQuery && reducedMotionChangeHandler) {
+    reducedMotionQuery.removeEventListener('change', reducedMotionChangeHandler);
+  }
+
+  lifecycleStopList.forEach(stop => stop());
+  lifecycleStopList.length = 0;
+
+  stopAutoplay();
+  clearTransitionTimeouts();
+
+  activeSpriteVisibilityAnimations.forEach(animation => animation.cancel());
+  activeSpriteVisibilityAnimations.clear();
+
+  pendingEnterEffectById.clear();
+  pendingExitEffectById.clear();
 });
 //#endregion
 </script>
