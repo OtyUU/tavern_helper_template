@@ -3,7 +3,7 @@
     <!-- Wrapper: full width, fixed height (stageHeight), centers the 16:9 stage and shows letter/pillar-box bars -->
     <div class="renpy-player__stage-wrap" :style="stageWrapStyle">
       <!-- Fixed ~16:9 viewport: height = stageHeight, width = round(stageHeight*16/9) -->
-      <div class="renpy-player__stage" :style="stageStyle">
+      <div class="renpy-player__stage" :style="stageStyle" @click="onStageClick">
         <div class="renpy-player__scene-layer" :class="cameraAnimationClass">
           <div
             v-if="isSceneTransitioning"
@@ -489,6 +489,19 @@ function stepForward() {
     return;
   }
   frameIndex.value = Math.min(frames.value.length - 1, frameIndex.value + 1);
+}
+
+function onStageClick() {
+  if (!hasFrames.value || isSceneTransitioning.value) {
+    return;
+  }
+
+  if (isAutoplaying.value) {
+    stopAutoplay();
+    return;
+  }
+
+  stepForward();
 }
 
 const { isAutoplaying, stopAutoplay, toggleAutoplay } = useAutoplay(
