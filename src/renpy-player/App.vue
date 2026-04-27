@@ -167,6 +167,7 @@ import { buildFrames, getInitialState, parseScriptFromMessage } from './parser';
 import { useRenpyPlayerSettingsStore } from './settings';
 import SmartImage from './SmartImage.vue';
 import type { PlayerAsset, PlayerFrame } from './types';
+import type { Ref } from 'vue';
 
 // Smoke checklist:
 // - mounts above #chat; latest/manual message selection works
@@ -175,29 +176,10 @@ import type { PlayerAsset, PlayerFrame } from './types';
 // - camera transforms/animations apply; settings persist after reload
 
 type SpriteVisibilityEffect = 'fade' | 'none';
-type RefValue<T> = { value: T };
 type SpriteVisibilityTransitionSettings = {
   spriteVisibilityEffect: string;
   spriteEnterMs: number;
   spriteExitMs: number;
-};
-type UseSpriteVisibilityTransitionsDeps = {
-  settings: RefValue<SpriteVisibilityTransitionSettings>;
-  isSceneTransitioning: RefValue<boolean>;
-  prefersReducedMotion: RefValue<boolean>;
-};
-type UseScenePresentationWatchersDeps = {
-  currentFrame: RefValue<PlayerFrame | null>;
-  displayedSprites: RefValue<PlayerFrame['sprites']>;
-  previousDisplayedSprites: RefValue<PlayerFrame['sprites']>;
-  applyFrame: (next: PlayerFrame | null, prev: PlayerFrame | null) => void;
-};
-type UseAutoplayDeps = {
-  frames: RefValue<PlayerFrame[]>;
-  frameIndex: RefValue<number>;
-  isSceneTransitioning: RefValue<boolean>;
-  autoPlayDelayMs: RefValue<number>;
-  stepForward: () => void;
 };
 
 function useReducedMotion() {
@@ -230,7 +212,11 @@ function useReducedMotion() {
   };
 }
 
-function useSpriteVisibilityTransitions(deps: UseSpriteVisibilityTransitionsDeps) {
+function useSpriteVisibilityTransitions(
+  settings: Ref<SpriteVisibilityTransitionSettings>,
+  isSceneTransitioning: Ref<boolean>,
+  prefersReducedMotion: Ref<boolean>,
+) {
   const spriteVisibilityAnimations = new WeakMap<Element, Animation>();
   const activeSpriteVisibilityAnimations = new Set<Animation>();
   const pendingEnterEffectById = new Map<string, SpriteVisibilityEffect>();
@@ -244,7 +230,7 @@ function useSpriteVisibilityTransitions(deps: UseSpriteVisibilityTransitionsDeps
     const next = nextSprites ?? [];
     const previousIds = new Set(previous.map(sprite => sprite.id));
     const nextIds = new Set(next.map(sprite => sprite.id));
-    const defaultEffect = deps.settings.value.spriteVisibilityEffect as SpriteVisibilityEffect;
+    const defaultEffect = settings.value.spriteVisibilityEffect as SpriteVisibilityEffect;
 
     pendingEnterEffectById.clear();
     pendingExitEffectById.clear();
@@ -275,7 +261,7 @@ function useSpriteVisibilityTransitions(deps: UseSpriteVisibilityTransitionsDeps
     spriteId: string | undefined,
     kind: 'enter' | 'exit',
   ): SpriteVisibilityEffect {
-    const fallback = deps.settings.value.spriteVisibilityEffect as SpriteVisibilityEffect;
+    const fallback = settings.value.spriteVisibilityEffect as SpriteVisibilityEffect;
     if (!spriteId) {
       return fallback;
     }
@@ -287,7 +273,7 @@ function useSpriteVisibilityTransitions(deps: UseSpriteVisibilityTransitionsDeps
   }
 
   function resolveSpriteVisibilityDuration(baseDurationMs: number, effect: SpriteVisibilityEffect): number {
-    if (deps.isSceneTransitioning.value || deps.prefersReducedMotion.value || effect === 'none') {
+    if (isSceneTransitioning.value || prefersReducedMotion.value || effect === 'none') {
       return 0;
     }
     return Math.max(0, baseDurationMs);
@@ -314,7 +300,7 @@ function useSpriteVisibilityTransitions(deps: UseSpriteVisibilityTransitionsDeps
 
     const spriteId = node.dataset.spriteId;
     const effect = resolveSpriteVisibilityEffect(spriteId, 'enter');
-    const duration = resolveSpriteVisibilityDuration(deps.settings.value.spriteEnterMs, effect);
+    const duration = resolveSpriteVisibilityDuration(settings.value.spriteEnterMs, effect);
     node.style.opacity = '0';
 
     if (duration <= 0) {
@@ -356,7 +342,7 @@ function useSpriteVisibilityTransitions(deps: UseSpriteVisibilityTransitionsDeps
 
     const spriteId = node.dataset.spriteId;
     const effect = resolveSpriteVisibilityEffect(spriteId, 'exit');
-    const duration = resolveSpriteVisibilityDuration(deps.settings.value.spriteExitMs, effect);
+    const duration = resolveSpriteVisibilityDuration(settings.value.spriteExitMs, effect);
 
     if (duration <= 0) {
       complete();
@@ -424,11 +410,11 @@ const {
   onSpriteLeave,
   prepareSpriteVisibilityEffects,
   clearSpriteVisibilityTransitions,
-} = useSpriteVisibilityTransitions({
+} = useSpriteVisibilityTransitions(
   settings,
   isSceneTransitioning,
   prefersReducedMotion,
-});
+);
 const lifecycleStopList: Array<() => void> = [];
 
 const maxMessageId = computed(() => getLastMessageId());
@@ -661,17 +647,22 @@ function applyFrame(next: PlayerFrame | null, prev: PlayerFrame | null): void {
   applyDisplayedFrame(next);
 }
 
-function useScenePresentationWatchers(deps: UseScenePresentationWatchersDeps) {
+function useScenePresentationWatchers(
+  currentFrameRef: Ref<PlayerFrame | null>,
+  displayedSpritesRef: Ref<PlayerFrame['sprites']>,
+  previousDisplayedSpritesRef: Ref<PlayerFrame['sprites']>,
+  applyFrameFn: (next: PlayerFrame | null, prev: PlayerFrame | null) => void,
+) {
   watch(
-    () => deps.currentFrame.value,
+    () => currentFrameRef.value,
     (nextFrame, previousFrame) => {
-      deps.applyFrame(nextFrame, previousFrame ?? null);
+      applyFrameFn(nextFrame, previousFrame ?? null);
     },
     { immediate: true },
   );
 
-  watch(deps.displayedSprites, (_nextSprites, previousSprites) => {
-    deps.previousDisplayedSprites.value = previousSprites ?? [];
+  watch(displayedSpritesRef, (_nextSprites, previousSprites) => {
+    previousDisplayedSpritesRef.value = previousSprites ?? [];
   });
 }
 
@@ -679,12 +670,12 @@ const sceneFadeStyle = computed(() => ({
   animationDuration: `${settings.value.sceneTransitionMs}ms`,
 }));
 
-useScenePresentationWatchers({
+useScenePresentationWatchers(
   currentFrame,
   displayedSprites,
   previousDisplayedSprites,
   applyFrame,
-});
+);
 //#endregion
 
 //#region 6) sprite visibility transitions (enter/leave)
@@ -716,7 +707,13 @@ function getCameraAnimationClass(animations?: string[]): string | undefined {
 //#endregion
 
 //#region 7) actions (selection, transport + autoplay)
-function useAutoplay(deps: UseAutoplayDeps) {
+function useAutoplay(
+  framesRef: Ref<PlayerFrame[]>,
+  frameIndexRef: Ref<number>,
+  isSceneTransitioningRef: Ref<boolean>,
+  autoPlayDelayMsRef: Ref<number>,
+  stepForwardFn: () => void,
+) {
   const isAutoplaying = ref(false);
   const autoplayHandle = ref<number | null>(null);
 
@@ -729,32 +726,32 @@ function useAutoplay(deps: UseAutoplayDeps) {
   }
 
   function toggleAutoplay() {
-    if (deps.isSceneTransitioning.value) {
+    if (isSceneTransitioningRef.value) {
       return;
     }
     if (isAutoplaying.value) {
       stopAutoplay();
       return;
     }
-    if (deps.frames.value.length <= 1) {
+    if (framesRef.value.length <= 1) {
       return;
     }
 
     isAutoplaying.value = true;
     autoplayHandle.value = window.setInterval(() => {
-      if (deps.isSceneTransitioning.value) {
+      if (isSceneTransitioningRef.value) {
         return;
       }
-      if (deps.frameIndex.value >= deps.frames.value.length - 1) {
+      if (frameIndexRef.value >= framesRef.value.length - 1) {
         stopAutoplay();
         return;
       }
-      deps.stepForward();
-    }, deps.autoPlayDelayMs.value);
+      stepForwardFn();
+    }, autoPlayDelayMsRef.value);
   }
 
   watch(
-    () => deps.autoPlayDelayMs.value,
+    () => autoPlayDelayMsRef.value,
     () => {
       if (isAutoplaying.value) {
         stopAutoplay();
@@ -764,7 +761,7 @@ function useAutoplay(deps: UseAutoplayDeps) {
   );
 
   watch(
-    () => deps.frames.value.length,
+    () => framesRef.value.length,
     frameCount => {
       if (frameCount <= 1) {
         stopAutoplay();
@@ -839,13 +836,13 @@ function stepForward() {
   frameIndex.value = Math.min(frames.value.length - 1, frameIndex.value + 1);
 }
 
-const { isAutoplaying, stopAutoplay, toggleAutoplay } = useAutoplay({
+const { isAutoplaying, stopAutoplay, toggleAutoplay } = useAutoplay(
   frames,
   frameIndex,
   isSceneTransitioning,
   autoPlayDelayMs,
   stepForward,
-});
+);
 //#endregion
 
 //#region 8) cross-cutting watchers
