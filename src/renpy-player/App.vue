@@ -65,7 +65,6 @@
       </div>
     </div>
 
-
     <div class="renpy-player__footer">
       <div class="renpy-player__transport">
         <button
@@ -202,10 +201,10 @@ const {
   setup: setupReducedMotion,
   cleanup: cleanupReducedMotion,
 } = useReducedMotion();
-let prepareSpriteVisibilityEffectsForScenePresentation = (
-  _previousSprites: PlayerFrame['sprites'],
-  _nextSprites: PlayerFrame['sprites'],
-) => {};
+let applyPendingSpriteVisibilityEffects: (
+  previousSprites: PlayerFrame['sprites'],
+  nextSprites: PlayerFrame['sprites'],
+) => void = () => {};
 const {
   displayedBackground,
   displayedSprites,
@@ -216,7 +215,7 @@ const {
 } = useScenePresentation(
   settings,
   (previousSprites, nextSprites) => {
-    prepareSpriteVisibilityEffectsForScenePresentation(previousSprites, nextSprites);
+    applyPendingSpriteVisibilityEffects(previousSprites, nextSprites);
   },
 );
 const {
@@ -229,7 +228,9 @@ const {
   isSceneTransitioning,
   prefersReducedMotion,
 );
-prepareSpriteVisibilityEffectsForScenePresentation = prepareSpriteVisibilityEffects;
+// Scene presentation needs the transition preparer, but the transition composable also depends on
+// scene-transition state produced by scene presentation. This bridge preserves that wiring order.
+applyPendingSpriteVisibilityEffects = prepareSpriteVisibilityEffects;
 const lifecycleStopList: Array<() => void> = [];
 
 const maxMessageId = computed(() => getLastMessageId());
