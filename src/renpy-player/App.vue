@@ -175,6 +175,30 @@ import type { PlayerAsset, PlayerFrame } from './types';
 // - camera transforms/animations apply; settings persist after reload
 
 type SpriteVisibilityEffect = 'fade' | 'none';
+type RefValue<T> = { value: T };
+type SpriteVisibilityTransitionSettings = {
+  spriteVisibilityEffect: string;
+  spriteEnterMs: number;
+  spriteExitMs: number;
+};
+type UseSpriteVisibilityTransitionsDeps = {
+  settings: RefValue<SpriteVisibilityTransitionSettings>;
+  isSceneTransitioning: RefValue<boolean>;
+  prefersReducedMotion: RefValue<boolean>;
+};
+type UseScenePresentationWatchersDeps = {
+  currentFrame: RefValue<PlayerFrame | null>;
+  displayedSprites: RefValue<PlayerFrame['sprites']>;
+  previousDisplayedSprites: RefValue<PlayerFrame['sprites']>;
+  applyFrame: (next: PlayerFrame | null, prev: PlayerFrame | null) => void;
+};
+type UseAutoplayDeps = {
+  frames: RefValue<PlayerFrame[]>;
+  frameIndex: RefValue<number>;
+  isSceneTransitioning: RefValue<boolean>;
+  autoPlayDelayMs: RefValue<number>;
+  stepForward: () => void;
+};
 
 function useReducedMotion() {
   const prefersReducedMotion = ref(false);
@@ -206,17 +230,7 @@ function useReducedMotion() {
   };
 }
 
-function useSpriteVisibilityTransitions(deps: {
-  settings: {
-    value: {
-      spriteVisibilityEffect: string;
-      spriteEnterMs: number;
-      spriteExitMs: number;
-    };
-  };
-  isSceneTransitioning: { value: boolean };
-  prefersReducedMotion: { value: boolean };
-}) {
+function useSpriteVisibilityTransitions(deps: UseSpriteVisibilityTransitionsDeps) {
   const spriteVisibilityAnimations = new WeakMap<Element, Animation>();
   const activeSpriteVisibilityAnimations = new Set<Animation>();
   const pendingEnterEffectById = new Map<string, SpriteVisibilityEffect>();
@@ -594,28 +608,34 @@ function updateDisplayedSprites(nextSprites: PlayerFrame['sprites']) {
   displayedSprites.value = next;
 }
 
+function resetDisplayedState() {
+  displayedBackground.value = undefined;
+  updateDisplayedSprites([]);
+  isSceneTransitioning.value = false;
+}
+
+function applyDisplayedFrame(frame: PlayerFrame) {
+  displayedBackground.value = frame.background;
+  updateDisplayedSprites(frame.sprites ?? []);
+  isSceneTransitioning.value = false;
+}
+
 function applyFrame(next: PlayerFrame | null, prev: PlayerFrame | null): void {
   clearTransitionTimeouts();
 
   if (!next) {
-    displayedBackground.value = undefined;
-    updateDisplayedSprites([]);
-    isSceneTransitioning.value = false;
+    resetDisplayedState();
     return;
   }
 
   if (!prev || next.index === prev.index) {
-    displayedBackground.value = next.background;
-    updateDisplayedSprites(next.sprites ?? []);
-    isSceneTransitioning.value = false;
+    applyDisplayedFrame(next);
     return;
   }
 
   if (next.isNewScene) {
     if (settings.value.sceneTransitionMs <= 0) {
-      displayedBackground.value = next.background;
-      updateDisplayedSprites(next.sprites ?? []);
-      isSceneTransitioning.value = false;
+      applyDisplayedFrame(next);
       return;
     }
 
@@ -638,17 +658,10 @@ function applyFrame(next: PlayerFrame | null, prev: PlayerFrame | null): void {
     return;
   }
 
-  displayedBackground.value = next.background;
-  updateDisplayedSprites(next.sprites ?? []);
-  isSceneTransitioning.value = false;
+  applyDisplayedFrame(next);
 }
 
-function useScenePresentationWatchers(deps: {
-  currentFrame: { value: PlayerFrame | null };
-  displayedSprites: { value: PlayerFrame['sprites'] };
-  previousDisplayedSprites: { value: PlayerFrame['sprites'] };
-  applyFrame: (next: PlayerFrame | null, prev: PlayerFrame | null) => void;
-}) {
+function useScenePresentationWatchers(deps: UseScenePresentationWatchersDeps) {
   watch(
     () => deps.currentFrame.value,
     (nextFrame, previousFrame) => {
@@ -703,13 +716,7 @@ function getCameraAnimationClass(animations?: string[]): string | undefined {
 //#endregion
 
 //#region 7) actions (selection, transport + autoplay)
-function useAutoplay(deps: {
-  frames: { value: PlayerFrame[] };
-  frameIndex: { value: number };
-  isSceneTransitioning: { value: boolean };
-  autoPlayDelayMs: { value: number };
-  stepForward: () => void;
-}) {
+function useAutoplay(deps: UseAutoplayDeps) {
   const isAutoplaying = ref(false);
   const autoplayHandle = ref<number | null>(null);
 
