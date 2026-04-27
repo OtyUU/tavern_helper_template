@@ -156,6 +156,12 @@ import { useRenpyPlayerSettingsStore } from './settings';
 import SmartImage from './SmartImage.vue';
 import type { PlayerAsset, PlayerFrame } from './types';
 
+// Smoke checklist:
+// - mounts above #chat; latest/manual message selection works
+// - restart/back/forward + autoplay controls work and autoplay stops at end
+// - scene fade + sprite enter/exit visibility effects behave as configured
+// - camera transforms/animations apply; settings persist after reload
+
 type SpriteVisibilityEffect = 'fade' | 'none';
 
 const settingsStore = useRenpyPlayerSettingsStore();
