@@ -180,9 +180,27 @@
         <div class="renpy-player-settings__section-header">
           <h4>Character layouts</h4>
           <p>
-            Configure per-character sprite layout, default outfit, and pose tokens.
+            Configure per-character sprite layout, default outfit, normalization height, and pose tokens.
             Global defaults apply when a character is not in the config.
           </p>
+        </div>
+
+        <div class="renpy-player-settings__field">
+          <label>Sprite reference height (px)</label>
+          <input
+            v-model.number="settings.spriteReferenceHeight"
+            class="text_pole"
+            type="number"
+            min="1000"
+            max="4000"
+            step="50"
+          />
+          <small>
+            Default canvas height for sprite normalization.
+            Characters without a specific <code>referenceHeight</code> will use this value.
+            This is the baseline canvas height for a character pack.
+            Taller source canvases render proportionally taller from the bottom anchor.
+          </small>
         </div>
 
         <div class="renpy-player-settings__field">
@@ -194,8 +212,14 @@
             :placeholder='charConfigPlaceholder'
           ></textarea>
           <small>
-            Each key is a character name. <code>layout</code>: <code>outfit_pose</code> (default) or <code>flat</code>.
-            <code>poseTokens</code>: list of tokens that identify a pose (e.g. <code>["base","burst"]</code>).
+            Each key is a character name (keys starting with "_" are ignored and can be used for comments).
+            <code>layout</code>: <code>outfit_pose</code> (default) or <code>flat</code>.
+            <code>referenceHeight</code>: baseline canvas height for this character&apos;s sprite pack.
+            Taller canvases render proportionally taller from the same bottom anchor.
+            <code>baseOffset</code>: shared per-character offset in pixels using <code>{&quot;x&quot;,&quot;y&quot;}</code>.
+            <code>poseOffsets</code>: per-pose offset in pixels using either legacy numbers for Y-only or <code>{&quot;x&quot;,&quot;y&quot;}</code>
+            objects (e.g. <code>{&quot;raised_hands&quot;: { &quot;x&quot;: 18, &quot;y&quot;: -30 }}</code>).
+            <code>poseTokens</code>: list of tokens that identify a pose.
           </small>
           <small v-if="characterSpriteConfigError" class="renpy-player-settings__error">{{ characterSpriteConfigError }}</small>
         </div>
@@ -250,8 +274,20 @@ const backgroundPathExample = computed(
 
 const charConfigPlaceholder = JSON.stringify(
   {
-    chinami: { layout: 'outfit_pose', defaultOutfit: 'pajamas', poseTokens: ['base', 'burst', 'lean'] },
-    teacher_npc: { layout: 'flat' },
+    _magical_academy: 'Reference: 2000px',
+    chinami: {
+      layout: 'outfit_pose',
+      defaultOutfit: 'pajamas',
+      poseTokens: ['base', 'burst', 'lean'],
+      referenceHeight: 2000,
+      baseOffset: { x: -10, y: 5 },
+      poseOffsets: { raised_hands: { x: 18, y: -30 } },
+    },
+    _summer_days: 'Reference: 3200px',
+    eileen: {
+      layout: 'flat',
+      referenceHeight: 3200,
+    },
   },
   null,
   2,

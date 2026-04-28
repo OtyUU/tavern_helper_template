@@ -110,10 +110,15 @@ export type PlayerFrame = {
   text?: string;
 };
 
+export type SpriteOffset = { x?: number; y?: number };
+
 export type CharacterSpriteConfig = {
   layout?: 'outfit_pose' | 'flat';
   defaultOutfit?: string;
   poseTokens?: string[];
+  referenceHeight?: number;
+  baseOffset?: SpriteOffset;
+  poseOffsets?: Record<string, SpriteOffset>;
 };
 
 export type FrameBuildOptions = {

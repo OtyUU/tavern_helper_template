@@ -20,6 +20,12 @@
 </template>
 
 <script setup lang="ts">
+type SmartImageResolvedPayload = {
+  src: string;
+  naturalWidth: number;
+  naturalHeight: number;
+};
+
 const props = withDefaults(
   defineProps<{
     candidates: string[];
@@ -31,6 +37,10 @@ const props = withDefaults(
     swapDurationMs: 160,
   },
 );
+
+const emit = defineEmits<{
+  resolved: [payload: SmartImageResolvedPayload];
+}>();
 
 const currentSrc = ref('');
 const previousSrc = ref('');
@@ -65,13 +75,14 @@ async function syncCurrentSrc(candidates: string[], blockedSrc?: string) {
     return;
   }
 
-  if (nextSrc === currentSrc.value) {
+  if (nextSrc.src === currentSrc.value) {
     return;
   }
 
+  emit('resolved', nextSrc);
   previousSrc.value = currentSrc.value;
   isSwapping.value = previousSrc.value !== '';
-  currentSrc.value = nextSrc;
+  currentSrc.value = nextSrc.src;
   scheduleSwapCleanup();
 }
 
@@ -81,13 +92,13 @@ async function resolveFirstCandidate(candidates: string[], generation: number, b
       continue;
     }
 
-    const isLoaded = await preloadCandidate(candidate);
+    const metadata = await preloadCandidate(candidate);
     if (generation !== loadGeneration.value) {
       return null;
     }
 
-    if (isLoaded) {
-      return candidate;
+    if (metadata) {
+      return metadata;
     }
 
     console.warn(`[RenPy Player] SmartImage failed candidate: ${candidate}`);
@@ -98,18 +109,23 @@ async function resolveFirstCandidate(candidates: string[], generation: number, b
 }
 
 function preloadCandidate(src: string) {
-  return new Promise<boolean>(resolve => {
+  return new Promise<SmartImageResolvedPayload | null>(resolve => {
     const image = new Image();
     image.decoding = 'async';
     image.onload = () => {
+      const metadata = {
+        src,
+        naturalWidth: image.naturalWidth || image.width,
+        naturalHeight: image.naturalHeight || image.height,
+      };
       if (typeof image.decode === 'function') {
-        image.decode().catch(() => undefined).finally(() => resolve(true));
+        image.decode().catch(() => undefined).finally(() => resolve(metadata));
         return;
       }
 
-      resolve(true);
+      resolve(metadata);
     };
-    image.onerror = () => resolve(false);
+    image.onerror = () => resolve(null);
     image.src = src;
   });
 }

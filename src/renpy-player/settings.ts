@@ -1,4 +1,4 @@
-import type { CharacterSpriteConfig } from './types';
+import type { CharacterSpriteConfig, SpriteOffset } from './types';
 
 const BaseSettingsSchema = z
   .object({
@@ -8,6 +8,7 @@ const BaseSettingsSchema = z
     defaultBackgroundScale: z.coerce.number().min(0.5).max(3.0).default(1.0),
     defaultSpriteScale: z.coerce.number().min(0.5).max(3.0).default(1.0),
     defaultSpriteY: z.coerce.number().min(-100).max(100).default(0),
+    spriteReferenceHeight: z.coerce.number().int().min(1000).max(4000).default(2000),
     spriteCenterX: z.coerce.number().min(0).max(100).default(50),
     spriteSideSpacing: z.coerce.number().min(0).max(50).default(22),
     closeupBackgroundScale: z.coerce.number().min(0.5).max(3.0).default(1.5),
@@ -96,14 +97,35 @@ function loadPersistedSettings(scriptId: string): {
   };
 }
 
-const CharacterSpriteConfigSchema = z.record(
-  z.string(),
-  z.object({
-    layout: z.enum(['outfit_pose', 'flat']).optional(),
-    defaultOutfit: z.string().optional(),
-    poseTokens: z.array(z.string()).optional(),
-  }),
-);
+const CharacterSpriteConfigEntryFieldSchemas = {
+  layout: z.enum(['outfit_pose', 'flat']).optional(),
+  defaultOutfit: z.string().optional(),
+  poseTokens: z.array(z.string()).optional(),
+  referenceHeight: z.coerce.number().int().min(1000).max(4000).optional(),
+} satisfies Record<string, z.ZodTypeAny>;
+
+const SpriteOffsetSchema = z.object({
+  x: z.coerce.number().finite().optional(),
+  y: z.coerce.number().finite().optional(),
+});
+
+const PoseOffsetValueSchema = z.union([
+  z.coerce.number().finite(),
+  SpriteOffsetSchema,
+]);
+
+function normalizeSpriteOffset(offset: SpriteOffset): SpriteOffset | null {
+  const normalized: SpriteOffset = {};
+
+  if (Number.isFinite(offset.x)) {
+    normalized.x = offset.x;
+  }
+  if (Number.isFinite(offset.y)) {
+    normalized.y = offset.y;
+  }
+
+  return normalized.x === undefined && normalized.y === undefined ? null : normalized;
+}
 
 function parseCharacterSpriteConfig(source: string): {
   value: Record<string, CharacterSpriteConfig>;
@@ -114,8 +136,68 @@ function parseCharacterSpriteConfig(source: string): {
   }
 
   try {
-    const parsed = CharacterSpriteConfigSchema.parse(JSON.parse(source));
-    return { value: parsed, error: null };
+    const parsed = JSON.parse(source);
+    if (!isRecord(parsed)) {
+      return {
+        value: {},
+        error: 'Character sprite config must be a JSON object.',
+      };
+    }
+
+    const sanitized: Record<string, CharacterSpriteConfig> = {};
+
+    for (const [key, rawValue] of Object.entries(parsed)) {
+      if (key.startsWith('_')) {
+        continue;
+      }
+      if (!isRecord(rawValue)) {
+        continue;
+      }
+
+      const nextConfig: CharacterSpriteConfig = {};
+      for (const [field, schema] of Object.entries(CharacterSpriteConfigEntryFieldSchemas)) {
+        const result = schema.safeParse(rawValue[field]);
+        if (result.success && result.data !== undefined) {
+          nextConfig[field as keyof typeof CharacterSpriteConfigEntryFieldSchemas] = result.data;
+        }
+      }
+
+      if (isRecord(rawValue.baseOffset)) {
+        const result = SpriteOffsetSchema.safeParse(rawValue.baseOffset);
+        if (result.success) {
+          const normalizedBaseOffset = normalizeSpriteOffset(result.data);
+          if (normalizedBaseOffset) {
+            nextConfig.baseOffset = normalizedBaseOffset;
+          }
+        }
+      }
+
+      if (isRecord(rawValue.poseOffsets)) {
+        const poseOffsets: Record<string, SpriteOffset> = {};
+        for (const [pose, offset] of Object.entries(rawValue.poseOffsets)) {
+          const result = PoseOffsetValueSchema.safeParse(offset);
+          if (!result.success) {
+            continue;
+          }
+
+          const normalizedOffset =
+            typeof result.data === 'number'
+              ? { y: result.data }
+              : normalizeSpriteOffset(result.data);
+
+          if (normalizedOffset) {
+            poseOffsets[pose] = normalizedOffset;
+          }
+        }
+        if (Object.keys(poseOffsets).length > 0) {
+          nextConfig.poseOffsets = poseOffsets;
+        }
+      }
+
+      sanitized[key] = nextConfig;
+    }
+
+    return { value: sanitized, error: null };
   } catch (error) {
     return {
       value: {},
