@@ -115,8 +115,6 @@ export type CharacterSpriteConfig = {
   defaultOutfit?: string;
   poseTokens?: string[];
   referenceHeight?: number;
-  /** Canonical/cropped-normalization baseline height for this character (px). */
-  baselineHeight?: number;
 };
 
 export type FrameBuildOptions = {

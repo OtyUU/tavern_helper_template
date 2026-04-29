@@ -158,7 +158,6 @@
                 <ul style="margin:0; padding-left:1rem; font-size:0.75rem;">
                   <li>Reference height: {{ getSpriteReferenceHeight(sprite.id) }}px</li>
                   <li>Natural height (resolved): {{ getSpriteNaturalHeight(sprite) }}px</li>
-                  <li>Baseline height (configured): {{ getSpriteBaselineHeight(sprite.id) ?? 'none' }}</li>
                   <li>Normalization scale: {{ formatNormalizationScale(getSpriteNormalizationScale(sprite)) }}</li>
                   <li v-if="sprite.asset?.candidates?.length">Candidates:</li>
                   <li v-for="c in sprite.asset?.candidates" :key="c" style="padding-left:1rem;">{{ c }}</li>
@@ -442,11 +441,6 @@ function getSpriteReferenceHeight(spriteId: string): number {
   return characterSpriteConfig.value[spriteId]?.referenceHeight ?? settings.value.spriteReferenceHeight;
 }
 
-function getSpriteBaselineHeight(spriteId: string): number | null {
-  const configured = characterSpriteConfig.value[spriteId]?.baselineHeight;
-  return configured && Number.isFinite(configured) && configured > 0 ? configured : null;
-}
-
 function getSpriteAssetKey(sprite: PlayerFrame['sprites'][number]): string {
   return sprite.asset?.candidates?.join('|') ?? sprite.asset?.description ?? '';
 }
@@ -460,12 +454,6 @@ function getSpriteNaturalHeight(sprite: PlayerFrame['sprites'][number]): number 
 function getSpriteNormalizationScale(sprite: PlayerFrame['sprites'][number]): number {
   const referenceHeight = getSpriteReferenceHeight(sprite.id);
   const naturalHeight = getSpriteNaturalHeight(sprite);
-  const baselineHeight = getSpriteBaselineHeight(sprite.id);
-
-  if (baselineHeight) {
-    return naturalHeight > 0 ? naturalHeight / baselineHeight : 1;
-  }
-
   return naturalHeight > 0 ? referenceHeight / naturalHeight : 1;
 }
 

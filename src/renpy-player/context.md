@@ -233,9 +233,7 @@ Defaults:
   - `spriteCenterX`
   - `spriteSideSpacing`
   - `spriteReferenceHeight`
-  - per-character `referenceHeight`, `baselineHeight`
-  - when `baselineHeight` is set, sprite normalization uses `resolved.naturalHeight / baselineHeight` for the current asset so tightly cropped poses keep a more consistent perceived body size
-  - choose `baselineHeight` from a representative canonical pose or uncropped export height for that character pack; leave it unset to preserve the legacy `referenceHeight / resolved.naturalHeight` behavior
+  - per-character `referenceHeight`
   - camera `spriteY` is translated before scale in the transform list, so its screen-space shift stays stable and is not multiplied by `--sprite-normalize-scale`
 - Timing and transitions:
   - `cameraTransitionMs`
@@ -310,6 +308,5 @@ Update these files together when behavior changes:
   - autoplay in `useAutoplay()`
 - `SmartImage.vue`
   - candidate fallback order, swap behavior, and `resolved` metadata
-- `App.vue` uses `resolved.naturalHeight / baselineHeight` when `baselineHeight` is configured, otherwise the legacy `referenceHeight / resolved.naturalHeight` normalization path
 
-Also update `context.md` whenever implemented behavior changes in a way an agent should know before editing.
+Also update `context.md` whenever implemented behavior changes in a way an agent should know before editing.                                                                                                                                                                 
