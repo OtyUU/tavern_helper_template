@@ -40,7 +40,7 @@
                 :candidates="sprite.asset?.candidates ?? []"
                 :alt="sprite.asset?.description ?? sprite.id"
                 :swap-duration-ms="sprite.swapDurationMs"
-                @resolved="onSpriteResolved(sprite.id, sprite.assetKey, $event)"
+                @resolved="onSpriteResolved(sprite.id, '', $event)"
               />
             </div>
           </TransitionGroup>
@@ -158,7 +158,7 @@
                 <ul style="margin:0; padding-left:1rem; font-size:0.75rem;">
                   <li>Reference height: {{ getSpriteReferenceHeight(sprite.id) }}px</li>
                   <li>Natural height (resolved): {{ getSpriteNaturalHeight(sprite) }}px</li>
-                  <li>Normalization scale: {{ formatNormalizationScale(getSpriteNormalizationScale(sprite)) }}</li>
+                  <li>Normalization scale: {{ getSpriteNormalizationScale(sprite).toFixed(4) }}</li>
                   <li v-if="sprite.asset?.candidates?.length">Candidates:</li>
                   <li v-for="c in sprite.asset?.candidates" :key="c" style="padding-left:1rem;">{{ c }}</li>
                   <li v-if="!sprite.asset?.candidates?.length">No asset candidates</li>
@@ -257,7 +257,17 @@ const {
 const lifecycleStopList: Array<() => void> = [];
 
 const maxMessageId = computed(() => getLastMessageId());
-const spriteAssetMetrics = ref<Record<string, { assetKey: string; naturalHeight: number }>>({});
+const characterNaturalHeights = ref<Record<string, number>>({});
+
+const characterNormalizationScales = computed(() => {
+  const scales: Record<string, number> = {};
+  for (const charId in characterNaturalHeights.value) {
+    const refHeight = getSpriteReferenceHeight(charId);
+    const natHeight = characterNaturalHeights.value[charId];
+    scales[charId] = natHeight > 0 ? refHeight / natHeight : 1;
+  }
+  return scales;
+});
 
 const parsedScript = computed(() => parseScriptFromMessage(currentMessage.value?.message ?? ''));
 
@@ -416,7 +426,6 @@ const renderedSprites = computed(() =>
   (displayedSprites.value ?? []).map(sprite => {
     const referenceHeight = getSpriteReferenceHeight(sprite.id);
     const normalizationScale = getSpriteNormalizationScale(sprite);
-    const assetKey = getSpriteAssetKey(sprite);
 
     return {
       ...sprite,
@@ -429,7 +438,6 @@ const renderedSprites = computed(() =>
       },
       swapDurationMs: getSpriteSwapDuration(sprite),
       referenceHeight,
-      assetKey,
       normalizationScale,
     };
   }),
@@ -441,38 +449,24 @@ function getSpriteReferenceHeight(spriteId: string): number {
   return characterSpriteConfig.value[spriteId]?.referenceHeight ?? settings.value.spriteReferenceHeight;
 }
 
-function getSpriteAssetKey(sprite: PlayerFrame['sprites'][number]): string {
-  return sprite.asset?.candidates?.join('|') ?? sprite.asset?.description ?? '';
-}
 
 function getSpriteNaturalHeight(sprite: PlayerFrame['sprites'][number]): number {
-  const assetKey = getSpriteAssetKey(sprite);
-  const metrics = spriteAssetMetrics.value[sprite.id];
-  return metrics?.assetKey === assetKey ? metrics.naturalHeight : getSpriteReferenceHeight(sprite.id);
+  return characterNaturalHeights.value[sprite.id] ?? getSpriteReferenceHeight(sprite.id);
 }
 
 function getSpriteNormalizationScale(sprite: PlayerFrame['sprites'][number]): number {
-  const referenceHeight = getSpriteReferenceHeight(sprite.id);
-  const naturalHeight = getSpriteNaturalHeight(sprite);
-  return naturalHeight > 0 ? referenceHeight / naturalHeight : 1;
+  return characterNormalizationScales.value[sprite.id] ?? 1;
 }
 
-function formatNormalizationScale(value: number): string {
-  return value.toFixed(4);
-}
 
 function onSpriteResolved(
   spriteId: string,
-  assetKey: string,
+  _assetKey: string,
   payload: { naturalHeight: number },
 ) {
-  spriteAssetMetrics.value = {
-    ...spriteAssetMetrics.value,
-    [spriteId]: {
-      assetKey,
-      naturalHeight: payload.naturalHeight,
-    },
-  };
+  if (characterNaturalHeights.value[spriteId] === undefined) {
+    characterNaturalHeights.value[spriteId] = payload.naturalHeight;
+  }
 }
 
 function getSpriteAnchorX(position: 'left' | 'center' | 'right'): number {
