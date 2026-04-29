@@ -228,8 +228,6 @@ export const useRenpyPlayerSettingsStore = defineStore('renpy-player-settings', 
     { deep: true },
   );
 
-  const characterSpriteConfigResult = computed(() => parseCharacterSpriteConfig(settings.value.characterSpriteConfig));
-
   const assetExtensions = computed(() =>
     settings.value.assetExtensions
       .split(',')
@@ -244,11 +242,24 @@ export const useRenpyPlayerSettingsStore = defineStore('renpy-player-settings', 
       .filter(Boolean),
   );
 
+  const characterSpriteConfigParsed = ref<Record<string, CharacterSpriteConfig>>({});
+  const characterSpriteConfigError = ref<string | null>(null);
+
+  watch(
+    () => settings.value.characterSpriteConfig,
+    (jsonString) => {
+      const result = parseCharacterSpriteConfig(jsonString);
+      characterSpriteConfigParsed.value = result.value;
+      characterSpriteConfigError.value = result.error;
+    },
+    { immediate: true }
+  );
+
   return {
     settings,
     assetExtensions,
     globalPoseTokens,
-    characterSpriteConfig: computed(() => characterSpriteConfigResult.value.value),
-    characterSpriteConfigError: computed(() => characterSpriteConfigResult.value.error),
+    characterSpriteConfig: characterSpriteConfigParsed,
+    characterSpriteConfigError,
   };
 });
