@@ -208,7 +208,7 @@ Only settings that affect parsing, frame building, asset lookup, or playback beh
 - `defaultExpression`
 - `globalPoseTokens`
 - `characterSpriteConfig`
-  - supported fields: `layout`, `defaultOutfit`, `poseTokens`, `referenceHeight`, `baseOffset`, `poseOffsets`
+  - supported fields: `layout`, `defaultOutfit`, `poseTokens`, `referenceHeight`, `baselineHeight`, `baseOffset`, `poseOffsets`
   - keys starting with `_` are ignored
   - invalid entries are partially sanitized instead of throwing
 
@@ -231,7 +231,10 @@ Defaults:
   - `spriteCenterX`
   - `spriteSideSpacing`
   - `spriteReferenceHeight`
-  - per-character `referenceHeight`, `baseOffset`, `poseOffsets`
+  - per-character `referenceHeight`, `baselineHeight`, `baseOffset`, `poseOffsets`
+  - when `baselineHeight` is set, sprite normalization uses `resolved.naturalHeight / baselineHeight` for the current asset so tightly cropped poses keep a more consistent perceived body size
+  - choose `baselineHeight` from a representative canonical pose or uncropped export height for that character pack; leave it unset to preserve the legacy `referenceHeight / resolved.naturalHeight` behavior
+  - camera `spriteY` and sprite X/Y offsets are translated before scale in the transform list, so their screen-space offsets stay stable and are not multiplied by `--sprite-normalize-scale`
 - Timing and transitions:
   - `cameraTransitionMs`
   - `sceneTransitionMs`
@@ -305,6 +308,6 @@ Update these files together when behavior changes:
   - autoplay in `useAutoplay()`
 - `SmartImage.vue`
   - candidate fallback order, swap behavior, and `resolved` metadata
-  - `App.vue` uses `resolved.naturalHeight` to normalize sprite scale against configured reference heights
+- `App.vue` uses `resolved.naturalHeight / baselineHeight` when `baselineHeight` is configured, otherwise the legacy `referenceHeight / resolved.naturalHeight` normalization path
 
 Also update `context.md` whenever implemented behavior changes in a way an agent should know before editing.

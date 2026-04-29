@@ -157,7 +157,8 @@
                 <p><strong>Sprite {{ sprite.id }}:</strong></p>
                 <ul style="margin:0; padding-left:1rem; font-size:0.75rem;">
                   <li>Reference height: {{ getSpriteReferenceHeight(sprite.id) }}px</li>
-                  <li>Resolved height: {{ getSpriteNaturalHeight(sprite) }}px</li>
+                  <li>Natural height (resolved): {{ getSpriteNaturalHeight(sprite) }}px</li>
+                  <li>Baseline height (configured): {{ getSpriteBaselineHeight(sprite.id) ?? 'none' }}</li>
                   <li>Normalization scale: {{ formatNormalizationScale(getSpriteNormalizationScale(sprite)) }}</li>
                   <li>Offset X: {{ getSpriteTotalOffset(sprite.id, sprite.pose).x }}px</li>
                   <li>Offset Y: {{ getSpriteTotalOffset(sprite.id, sprite.pose).y }}px</li>
@@ -420,10 +421,8 @@ const renderedSprites = computed(() =>
   (displayedSprites.value ?? []).map(sprite => {
     const referenceHeight = getSpriteReferenceHeight(sprite.id);
     const totalOffset = getSpriteTotalOffset(sprite.id, sprite.pose);
+    const normalizationScale = getSpriteNormalizationScale(sprite);
     const assetKey = getSpriteAssetKey(sprite);
-    const metrics = spriteAssetMetrics.value[sprite.id];
-    const naturalHeight = metrics?.assetKey === assetKey ? metrics.naturalHeight : referenceHeight;
-    const normalizationScale = naturalHeight > 0 ? naturalHeight / referenceHeight : 1;
 
     return {
       ...sprite,
@@ -448,6 +447,11 @@ const renderedSprites = computed(() =>
 //#region 5) scene presentation (apply frame -> displayed*)
 function getSpriteReferenceHeight(spriteId: string): number {
   return characterSpriteConfig.value[spriteId]?.referenceHeight ?? settings.value.spriteReferenceHeight;
+}
+
+function getSpriteBaselineHeight(spriteId: string): number | null {
+  const configured = characterSpriteConfig.value[spriteId]?.baselineHeight;
+  return configured && Number.isFinite(configured) && configured > 0 ? configured : null;
 }
 
 function getSpriteBaseOffset(spriteId: string): ResolvedSpriteOffset {
@@ -488,7 +492,13 @@ function getSpriteNaturalHeight(sprite: PlayerFrame['sprites'][number]): number 
 function getSpriteNormalizationScale(sprite: PlayerFrame['sprites'][number]): number {
   const referenceHeight = getSpriteReferenceHeight(sprite.id);
   const naturalHeight = getSpriteNaturalHeight(sprite);
-  return naturalHeight > 0 ? naturalHeight / referenceHeight : 1;
+  const baselineHeight = getSpriteBaselineHeight(sprite.id);
+
+  if (baselineHeight) {
+    return naturalHeight > 0 ? naturalHeight / baselineHeight : 1;
+  }
+
+  return naturalHeight > 0 ? referenceHeight / naturalHeight : 1;
 }
 
 function formatNormalizationScale(value: number): string {
@@ -838,9 +848,9 @@ onBeforeUnmount(() => {
   --sprite-transform-x: var(--sprite-offset-x);
   --sprite-transform-y: calc(var(--sprite-y) + var(--sprite-offset-y));
   transform:
-    scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)))
     translateX(var(--sprite-transform-x))
-    translateY(var(--sprite-transform-y));
+    translateY(var(--sprite-transform-y))
+    scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)));
   transform-origin: center bottom;
   transition: transform var(--renpy-camera-transition-ms) ease;
 }
@@ -867,11 +877,11 @@ onBeforeUnmount(() => {
   bottom: 0;
 }
 @keyframes renpy-shake {
-  0%, 100% { transform: scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))) translateX(calc(var(--sprite-transform-x) + 0px)) translateY(var(--sprite-transform-y)); }
-  20% { transform: scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))) translateX(calc(var(--sprite-transform-x) - 6px)) translateY(var(--sprite-transform-y)); }
-  40% { transform: scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))) translateX(calc(var(--sprite-transform-x) + 6px)) translateY(var(--sprite-transform-y)); }
-  60% { transform: scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))) translateX(calc(var(--sprite-transform-x) - 4px)) translateY(var(--sprite-transform-y)); }
-  80% { transform: scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))) translateX(calc(var(--sprite-transform-x) + 4px)) translateY(var(--sprite-transform-y)); }
+  0%, 100% { transform: translateX(calc(var(--sprite-transform-x) + 0px)) translateY(var(--sprite-transform-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
+  20% { transform: translateX(calc(var(--sprite-transform-x) - 6px)) translateY(var(--sprite-transform-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
+  40% { transform: translateX(calc(var(--sprite-transform-x) + 6px)) translateY(var(--sprite-transform-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
+  60% { transform: translateX(calc(var(--sprite-transform-x) - 4px)) translateY(var(--sprite-transform-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
+  80% { transform: translateX(calc(var(--sprite-transform-x) + 4px)) translateY(var(--sprite-transform-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
 }
 .renpy-player__sprite--shake {
   animation: renpy-shake 0.45s ease-in-out 1;
@@ -900,17 +910,17 @@ onBeforeUnmount(() => {
   100% { opacity: 0; }
 }
 @keyframes renpy-bounce {
-  0%, 100% { transform: scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))) translateX(var(--sprite-transform-x)) translateY(var(--sprite-transform-y)); }
-  30% { transform: scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))) translateX(var(--sprite-transform-x)) translateY(calc(var(--sprite-transform-y) - 20px)); }
-  55% { transform: scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))) translateX(var(--sprite-transform-x)) translateY(var(--sprite-transform-y)); }
-  75% { transform: scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))) translateX(var(--sprite-transform-x)) translateY(calc(var(--sprite-transform-y) - 8px)); }
+  0%, 100% { transform: translateX(var(--sprite-transform-x)) translateY(var(--sprite-transform-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
+  30% { transform: translateX(var(--sprite-transform-x)) translateY(calc(var(--sprite-transform-y) - 20px)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
+  55% { transform: translateX(var(--sprite-transform-x)) translateY(var(--sprite-transform-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
+  75% { transform: translateX(var(--sprite-transform-x)) translateY(calc(var(--sprite-transform-y) - 8px)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
 }
 .renpy-player__sprite--bounce {
   animation: renpy-bounce 0.4s ease-out 1;
 }
 @keyframes renpy-pulse {
-  0%, 100% { transform: scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))) translateX(var(--sprite-transform-x)) translateY(var(--sprite-transform-y)); }
-  50% { transform: scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale) * 1.06)) translateX(var(--sprite-transform-x)) translateY(var(--sprite-transform-y)); }
+  0%, 100% { transform: translateX(var(--sprite-transform-x)) translateY(var(--sprite-transform-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
+  50% { transform: translateX(var(--sprite-transform-x)) translateY(var(--sprite-transform-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale) * 1.06)); }
 }
 .renpy-player__sprite--pulse {
   animation: renpy-pulse 0.4s ease-in-out 1;

@@ -216,6 +216,9 @@
             <code>layout</code>: <code>outfit_pose</code> (default) or <code>flat</code>.
             <code>referenceHeight</code>: baseline canvas height for this character&apos;s sprite pack.
             Taller canvases render proportionally taller from the same bottom anchor.
+            <code>baselineHeight</code>: canonical height used for cropped-pose normalization; set it to a typical full-body
+            height for that character&apos;s sprite pack so the player can scale each pose by
+            <code>naturalHeight / baselineHeight</code>.
             <code>baseOffset</code>: shared per-character offset in pixels using <code>{&quot;x&quot;,&quot;y&quot;}</code>.
             <code>poseOffsets</code>: per-pose offset in pixels using either legacy numbers for Y-only or <code>{&quot;x&quot;,&quot;y&quot;}</code>
             objects (e.g. <code>{&quot;raised_hands&quot;: { &quot;x&quot;: 18, &quot;y&quot;: -30 }}</code>).
@@ -280,6 +283,7 @@ const charConfigPlaceholder = JSON.stringify(
       defaultOutfit: 'pajamas',
       poseTokens: ['base', 'burst', 'lean'],
       referenceHeight: 2000,
+      baselineHeight: 2000,
       baseOffset: { x: -10, y: 5 },
       poseOffsets: { raised_hands: { x: 18, y: -30 } },
     },
@@ -287,6 +291,7 @@ const charConfigPlaceholder = JSON.stringify(
     eileen: {
       layout: 'flat',
       referenceHeight: 3200,
+      baselineHeight: 3200,
     },
   },
   null,

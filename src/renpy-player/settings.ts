@@ -102,6 +102,7 @@ const CharacterSpriteConfigEntryFieldSchemas = {
   defaultOutfit: z.string().optional(),
   poseTokens: z.array(z.string()).optional(),
   referenceHeight: z.coerce.number().int().min(1000).max(4000).optional(),
+  baselineHeight: z.coerce.number().int().min(1000).max(6000).optional(),
 } satisfies Record<string, z.ZodTypeAny>;
 
 const SpriteOffsetSchema = z.object({
