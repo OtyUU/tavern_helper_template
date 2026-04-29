@@ -194,6 +194,7 @@ Other notes:
 - Character, outfit, pose, expression, background, and segment are lowercased when building paths.
 - `blush` changes only candidate order. If `*-blush` is missing, the non-blush asset is still accepted.
 - Missing assets do not stop frame construction.
+- Prefer preprocessing sprite packs so exported poses already share the same bottom anchor; the player no longer applies per-character or per-pose runtime offsets.
 
 ## Settings That Matter
 
@@ -208,9 +209,10 @@ Only settings that affect parsing, frame building, asset lookup, or playback beh
 - `defaultExpression`
 - `globalPoseTokens`
 - `characterSpriteConfig`
-  - supported fields: `layout`, `defaultOutfit`, `poseTokens`, `referenceHeight`, `baselineHeight`, `baseOffset`, `poseOffsets`
+  - supported fields: `layout`, `defaultOutfit`, `poseTokens`, `referenceHeight`, `baselineHeight`
   - keys starting with `_` are ignored
   - invalid entries are partially sanitized instead of throwing
+  - unknown fields are ignored
 
 Defaults:
 
@@ -231,10 +233,10 @@ Defaults:
   - `spriteCenterX`
   - `spriteSideSpacing`
   - `spriteReferenceHeight`
-  - per-character `referenceHeight`, `baselineHeight`, `baseOffset`, `poseOffsets`
+  - per-character `referenceHeight`, `baselineHeight`
   - when `baselineHeight` is set, sprite normalization uses `resolved.naturalHeight / baselineHeight` for the current asset so tightly cropped poses keep a more consistent perceived body size
   - choose `baselineHeight` from a representative canonical pose or uncropped export height for that character pack; leave it unset to preserve the legacy `referenceHeight / resolved.naturalHeight` behavior
-  - camera `spriteY` and sprite X/Y offsets are translated before scale in the transform list, so their screen-space offsets stay stable and are not multiplied by `--sprite-normalize-scale`
+  - camera `spriteY` is translated before scale in the transform list, so its screen-space shift stays stable and is not multiplied by `--sprite-normalize-scale`
 - Timing and transitions:
   - `cameraTransitionMs`
   - `sceneTransitionMs`
@@ -261,7 +263,7 @@ Defaults:
   - if `sceneTransitionMs <= 0`, scene changes apply immediately
   - otherwise background swaps at midpoint and sprites reappear at the end
 - Camera:
-  - `cameraTransform` controls computed background scale, sprite scale, and sprite Y offset
+  - `cameraTransform` controls computed background scale, sprite scale, and sprite Y translation
   - transition duration comes from `cameraTransitionMs`
   - `shake` becomes a one-frame class on the scene layer
 - Sprite visibility:

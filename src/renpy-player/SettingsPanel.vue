@@ -125,7 +125,7 @@
               <input v-model.number="settings.defaultSpriteScale" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
             </div>
             <div class="renpy-player-settings__field">
-              <label>Sprite offset Y (%)</label>
+              <label>Sprite Y (%)</label>
               <input v-model.number="settings.defaultSpriteY" class="text_pole" type="number" min="-100" max="100" step="1" />
             </div>
             <div class="renpy-player-settings__field">
@@ -153,7 +153,7 @@
               <input v-model.number="settings.mediumSpriteScale" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
             </div>
             <div class="renpy-player-settings__field">
-              <label>Sprite offset Y (%)</label>
+              <label>Sprite Y (%)</label>
               <input v-model.number="settings.mediumSpriteY" class="text_pole" type="number" min="-100" max="100" step="1" />
             </div>
           </div>
@@ -169,7 +169,7 @@
               <input v-model.number="settings.closeupSpriteScale" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
             </div>
             <div class="renpy-player-settings__field">
-              <label>Sprite offset Y (%)</label>
+              <label>Sprite Y (%)</label>
               <input v-model.number="settings.closeupSpriteY" class="text_pole" type="number" min="-100" max="100" step="1" />
             </div>
           </div>
@@ -219,10 +219,8 @@
             <code>baselineHeight</code>: canonical height used for cropped-pose normalization; set it to a typical full-body
             height for that character&apos;s sprite pack so the player can scale each pose by
             <code>naturalHeight / baselineHeight</code>.
-            <code>baseOffset</code>: shared per-character offset in pixels using <code>{&quot;x&quot;,&quot;y&quot;}</code>.
-            <code>poseOffsets</code>: per-pose offset in pixels using either legacy numbers for Y-only or <code>{&quot;x&quot;,&quot;y&quot;}</code>
-            objects (e.g. <code>{&quot;raised_hands&quot;: { &quot;x&quot;: 18, &quot;y&quot;: -30 }}</code>).
             <code>poseTokens</code>: list of tokens that identify a pose.
+            Extra JSON fields are ignored, so old offset metadata can remain in source configs without affecting runtime.
           </small>
           <small v-if="characterSpriteConfigError" class="renpy-player-settings__error">{{ characterSpriteConfigError }}</small>
         </div>
@@ -284,8 +282,6 @@ const charConfigPlaceholder = JSON.stringify(
       poseTokens: ['base', 'burst', 'lean'],
       referenceHeight: 2000,
       baselineHeight: 2000,
-      baseOffset: { x: -10, y: 5 },
-      poseOffsets: { raised_hands: { x: 18, y: -30 } },
     },
     _summer_days: 'Reference: 3200px',
     eileen: {

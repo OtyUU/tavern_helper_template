@@ -1,4 +1,4 @@
-import type { CharacterSpriteConfig, SpriteOffset } from './types';
+import type { CharacterSpriteConfig } from './types';
 
 const BaseSettingsSchema = z
   .object({
@@ -105,29 +105,6 @@ const CharacterSpriteConfigEntryFieldSchemas = {
   baselineHeight: z.coerce.number().int().min(1000).max(6000).optional(),
 } satisfies Record<string, z.ZodTypeAny>;
 
-const SpriteOffsetSchema = z.object({
-  x: z.coerce.number().finite().optional(),
-  y: z.coerce.number().finite().optional(),
-});
-
-const PoseOffsetValueSchema = z.union([
-  z.coerce.number().finite(),
-  SpriteOffsetSchema,
-]);
-
-function normalizeSpriteOffset(offset: SpriteOffset): SpriteOffset | null {
-  const normalized: SpriteOffset = {};
-
-  if (Number.isFinite(offset.x)) {
-    normalized.x = offset.x;
-  }
-  if (Number.isFinite(offset.y)) {
-    normalized.y = offset.y;
-  }
-
-  return normalized.x === undefined && normalized.y === undefined ? null : normalized;
-}
-
 function parseCharacterSpriteConfig(source: string): {
   value: Record<string, CharacterSpriteConfig>;
   error: string | null;
@@ -160,38 +137,6 @@ function parseCharacterSpriteConfig(source: string): {
         const result = schema.safeParse(rawValue[field]);
         if (result.success && result.data !== undefined) {
           nextConfig[field as keyof typeof CharacterSpriteConfigEntryFieldSchemas] = result.data;
-        }
-      }
-
-      if (isRecord(rawValue.baseOffset)) {
-        const result = SpriteOffsetSchema.safeParse(rawValue.baseOffset);
-        if (result.success) {
-          const normalizedBaseOffset = normalizeSpriteOffset(result.data);
-          if (normalizedBaseOffset) {
-            nextConfig.baseOffset = normalizedBaseOffset;
-          }
-        }
-      }
-
-      if (isRecord(rawValue.poseOffsets)) {
-        const poseOffsets: Record<string, SpriteOffset> = {};
-        for (const [pose, offset] of Object.entries(rawValue.poseOffsets)) {
-          const result = PoseOffsetValueSchema.safeParse(offset);
-          if (!result.success) {
-            continue;
-          }
-
-          const normalizedOffset =
-            typeof result.data === 'number'
-              ? { y: result.data }
-              : normalizeSpriteOffset(result.data);
-
-          if (normalizedOffset) {
-            poseOffsets[pose] = normalizedOffset;
-          }
-        }
-        if (Object.keys(poseOffsets).length > 0) {
-          nextConfig.poseOffsets = poseOffsets;
         }
       }
 

@@ -110,8 +110,6 @@ export type PlayerFrame = {
   text?: string;
 };
 
-export type SpriteOffset = { x?: number; y?: number };
-
 export type CharacterSpriteConfig = {
   layout?: 'outfit_pose' | 'flat';
   defaultOutfit?: string;
@@ -119,8 +117,6 @@ export type CharacterSpriteConfig = {
   referenceHeight?: number;
   /** Canonical/cropped-normalization baseline height for this character (px). */
   baselineHeight?: number;
-  baseOffset?: SpriteOffset;
-  poseOffsets?: Record<string, SpriteOffset>;
 };
 
 export type FrameBuildOptions = {
