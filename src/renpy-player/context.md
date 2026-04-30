@@ -173,18 +173,9 @@ Important behaviors:
 
 ### Sprites
 
-- Layout comes from `characterSpriteConfig[character].layout`, otherwise `defaultSpriteLayout`.
-
-`outfit_pose` layout:
+Sprites use the `outfit_pose` layout:
 
 - Directory: `<assetRoot>/<character>/<outfit>/<pose>`
-- Base name order:
-  - blush: `<expression>-blush`, then `<expression>`
-  - non-blush: `<expression>`
-
-`flat` layout:
-
-- Directory: `<assetRoot>/<character>`
 - Base name order:
   - blush: `<expression>-blush`, then `<expression>`
   - non-blush: `<expression>`
@@ -204,12 +195,11 @@ Only settings that affect parsing, frame building, asset lookup, or playback beh
 
 - `assetRoot`
 - `assetExtensions`
-- `defaultSpriteLayout`
 - `defaultPose`
 - `defaultExpression`
 - `globalPoseTokens`
 - `characterSpriteConfig`
-  - supported fields: `layout`, `defaultOutfit`, `poseTokens`, `referenceHeight`, `baselineHeight`
+  - supported fields: `defaultOutfit`, `poseTokens`, `referenceHeight`, `baselineHeight`
   - keys starting with `_` are ignored
   - invalid entries are partially sanitized instead of throwing
   - unknown fields are ignored
@@ -218,7 +208,6 @@ Defaults:
 
 - `assetRoot = ''`
 - `assetExtensions = 'png,jpg,jpeg,webp'`
-- `defaultSpriteLayout = 'outfit_pose'`
 - `defaultPose = 'base'`
 - `defaultExpression = 'neutral'`
 - `globalPoseTokens = 'base,burst,lean,sit,stand'`

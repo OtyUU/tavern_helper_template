@@ -372,36 +372,14 @@ function createSpriteAssetOutfitPose(
   };
 }
 
-function createSpriteAssetFlat(
-  character: string,
-  expression: string,
-  blush: boolean,
-  options: FrameBuildOptions,
-): PlayerAsset | undefined {
-  const root = trimTrailingSlash(options.assetRoot);
-  const char = character.toLowerCase();
-  const expr = expression.toLowerCase();
-
-  const dir = joinPath(root, char);
-  const baseNames = blush ? [`${expr}-blush`, expr] : [expr];
-  const candidates = buildCandidates(dir, baseNames, options.assetExtensions);
-
-  if (candidates.length === 0) return undefined;
-  return {
-    candidates,
-    description: `${character}/${expression}${blush ? '-blush' : ''}`,
-  };
-}
-
 // ─── Config resolution helpers ───────────────────────────────────────────────
 
 function getCharacterConfig(
   character: string,
   options: FrameBuildOptions,
-): Required<Pick<CharacterSpriteConfig, 'layout' | 'poseTokens'>> & { defaultOutfit: string } {
+): Required<Pick<CharacterSpriteConfig, 'poseTokens'>> & { defaultOutfit: string } {
   const cfg = options.characterSpriteConfig[character] ?? {};
   return {
-    layout: cfg.layout ?? options.defaultSpriteLayout,
     defaultOutfit: cfg.defaultOutfit ?? 'default',
     poseTokens: cfg.poseTokens ?? options.globalPoseTokens,
   };
@@ -463,29 +441,18 @@ function resolveShowState(
     id,
     character: id,
     position: existing?.position ?? 'center',
-    outfit: cfg.layout === 'outfit_pose' ? outfit : undefined,
-    pose: cfg.layout === 'outfit_pose' ? pose : undefined,
+    outfit,
+    pose,
     expression,
     blush: blush || undefined,
   };
   newState.asset = buildSpriteAsset(newState, options);
-  if (newState.outfit) {
-    rememberedOutfits[id] = newState.outfit;
-  }
+  rememberedOutfits[id] = newState.outfit;
 
   return newState;
 }
 
 function buildSpriteAsset(state: SpriteState, options: FrameBuildOptions): PlayerAsset | undefined {
-  const { layout } = getCharacterConfig(state.character, options);
-  if (layout === 'flat') {
-    return createSpriteAssetFlat(
-      state.character,
-      state.expression ?? options.defaultExpression,
-      state.blush ?? false,
-      options,
-    );
-  }
   return createSpriteAssetOutfitPose(
     state.character,
     state.outfit ?? 'default',

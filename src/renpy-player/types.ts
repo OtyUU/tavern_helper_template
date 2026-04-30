@@ -51,7 +51,7 @@ export type SpriteState = {
   id: string;
   character: string;
   position: SpritePosition;
-  /** Current outfit for this sprite (only for outfit_pose layout) */
+  /** Current outfit for this sprite */
   outfit?: string;
   pose?: string;
   expression?: string;
@@ -111,7 +111,6 @@ export type PlayerFrame = {
 };
 
 export type CharacterSpriteConfig = {
-  layout?: 'outfit_pose' | 'flat';
   defaultOutfit?: string;
   poseTokens?: string[];
   referenceHeight?: number;
@@ -121,7 +120,6 @@ export type FrameBuildOptions = {
   assetRoot: string;
   assetExtensions: string[];
   characterSpriteConfig: Record<string, CharacterSpriteConfig>;
-  defaultSpriteLayout: 'outfit_pose' | 'flat';
   defaultPose: string;
   defaultExpression: string;
   globalPoseTokens: string[];

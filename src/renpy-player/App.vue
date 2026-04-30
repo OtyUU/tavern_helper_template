@@ -289,7 +289,6 @@ const frames = computed(() => {
     assetRoot: settings.value.assetRoot,
     assetExtensions: assetExtensions.value,
     characterSpriteConfig: characterSpriteConfig.value,
-    defaultSpriteLayout: settings.value.defaultSpriteLayout,
     defaultPose: settings.value.defaultPose,
     defaultExpression: settings.value.defaultExpression,
     globalPoseTokens: globalPoseTokens.value,

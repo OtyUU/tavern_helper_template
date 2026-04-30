@@ -25,7 +25,6 @@ const BaseSettingsSchema = z
     spriteExitMs: z.coerce.number().int().min(0).max(2000).default(160),
     spriteVisibilityEffect: z.enum(['fade', 'none']).default('fade'),
     characterSpriteConfig: z.string().default('{}'),
-    defaultSpriteLayout: z.enum(['outfit_pose', 'flat']).default('outfit_pose'),
     defaultPose: z.string().default('base'),
     defaultExpression: z.string().default('neutral'),
     globalPoseTokens: z.string().default('base,burst,lean,sit,stand'),
@@ -98,7 +97,6 @@ function loadPersistedSettings(scriptId: string): {
 }
 
 const CharacterSpriteConfigEntryFieldSchemas = {
-  layout: z.enum(['outfit_pose', 'flat']).optional(),
   defaultOutfit: z.string().optional(),
   poseTokens: z.array(z.string()).optional(),
   referenceHeight: z.coerce.number().int().min(1000).max(4000).optional(),

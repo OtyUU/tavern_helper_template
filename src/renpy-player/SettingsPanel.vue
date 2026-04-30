@@ -180,7 +180,7 @@
         <div class="renpy-player-settings__section-header">
           <h4>Character layouts</h4>
           <p>
-            Configure per-character sprite layout, default outfit, normalization height, and pose tokens.
+            Configure per-character default outfit, normalization height, and pose tokens.
             Global defaults apply when a character is not in the config.
           </p>
         </div>
@@ -213,7 +213,7 @@
           ></textarea>
           <small>
             Each key is a character name (keys starting with "_" are ignored and can be used for comments).
-            <code>layout</code>: <code>outfit_pose</code> (default) or <code>flat</code>.
+            <code>defaultOutfit</code>: outfit used when <code>show</code> omits <code>in &lt;outfit&gt;</code> and no previous outfit is remembered.
             <code>referenceHeight</code>: baseline canvas height for this character&apos;s sprite pack.
             Taller canvases render proportionally taller from the same bottom anchor.
             <code>poseTokens</code>: list of tokens that identify a pose.
@@ -223,15 +223,6 @@
         </div>
 
         <div class="renpy-player-settings__grid">
-          <div class="renpy-player-settings__field">
-            <label>Default sprite layout</label>
-            <select v-model="settings.defaultSpriteLayout" class="text_pole">
-              <option value="outfit_pose">outfit_pose</option>
-              <option value="flat">flat</option>
-            </select>
-            <small>Fallback for characters not in the config above.</small>
-          </div>
-
           <div class="renpy-player-settings__field">
             <label>Default pose token</label>
             <input v-model="settings.defaultPose" class="text_pole" type="text" placeholder="base" />
@@ -274,15 +265,9 @@ const charConfigPlaceholder = JSON.stringify(
   {
     _magical_academy: 'Reference: 2000px',
     chinami: {
-      layout: 'outfit_pose',
       defaultOutfit: 'pajamas',
       poseTokens: ['base', 'burst', 'lean'],
       referenceHeight: 2000,
-    },
-    _summer_days: 'Reference: 3200px',
-    eileen: {
-      layout: 'flat',
-      referenceHeight: 3200,
     },
   },
   null,
