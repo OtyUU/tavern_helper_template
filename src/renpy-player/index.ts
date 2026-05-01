@@ -1,11 +1,13 @@
 import { createScriptIdDiv, teleportStyle } from '@util/script';
 import App from './App.vue';
 import SettingsPanel from './SettingsPanel.vue';
+import { registerPlayerStatusMacro } from './status-macro';
 
 $(() => {
   const pinia = createPinia();
   const playerApp = createApp(App).use(pinia);
   const settingsApp = createApp(SettingsPanel).use(pinia);
+  const macroHandle = registerPlayerStatusMacro();
 
   const $playerHost = createScriptIdDiv().attr('id', 'th-renpy-player');
   const $settingsHost = createScriptIdDiv().appendTo('#extensions_settings2');
@@ -30,6 +32,7 @@ $(() => {
 
   $(window).on('pagehide', () => {
     stopList.forEach(stop => stop());
+    macroHandle.unregister();
     playerApp.unmount();
     settingsApp.unmount();
     $playerHost.remove();
