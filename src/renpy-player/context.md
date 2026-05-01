@@ -11,14 +11,33 @@ Agent-facing context for `src/renpy-player`.
 
 ## File Map
 
+### Controller & State
+
+- `useRenpyPlayerController.ts`: orchestration composable — store wiring, message/frame selection, rendered sprite pipeline, stage geometry, lifecycle (`onMounted`/`onScopeDispose`), tavern event subscriptions, autoplay stop + transition cleanup. Exposes grouped API: `model`, `stage`, `scene`, `dialogue`, `transport`, `selection`, `autoplay`, `diagnostics`.
+- `player-context.ts`: `InjectionKey<RenpyPlayerController>` + `useRenpyPlayer()` inject helper. All extracted components inject the controller via this module.
+
+### Vue Components
+
+- `App.vue`: thin wrapper — creates controller, provides it, renders `<PlayerStage />`. No logic.
+- `PlayerStage.vue`: stage root — renders `<SceneLayer />` + `<ViewportOverlay />` inside the stage div with click handler.
+- `SceneLayer.vue`: scene rendering — background `SmartImage`, scene fade div, gradient, sprite `TransitionGroup` with enter/leave hooks.
+- `ViewportOverlay.vue`: HUD overlay — empty state, dialogue bar (speaker + text), transport controls, autoplay button, message selection stepper, frame counter. Renders `<DiagnosticsPanel />`.
+- `DiagnosticsPanel.vue`: diagnostics `<details>` UI — reads controller.diagnostics, controller.model, controller.scene.
+- `SmartImage.vue`: candidate waterfall loading, swap crossfade, `resolved` emit.
+- `SettingsPanel.vue`: settings UI only; keep behavior in `settings.ts` or `useRenpyPlayerController.ts`.
+
+### Styles
+
+- `renpy-player.scss`: all styles for the player (unscoped). Imported once from `index.ts`. No `:deep()` usage — descendant selectors target child components directly.
+
+### Supporting Modules
+
 - `parser.ts`: grammar, token resolution, `StageState`, `buildFrames()`, `getInitialState()`
 - `types.ts`: shared command, asset, frame, and state contracts
 - `settings.ts`: Zod schema, saved-settings repair, character config parsing, Pinia store, persistence wiring
-- `player-composables.ts`: scene presentation, visibility transitions, autoplay, reduced-motion handling
-- `App.vue`: store wiring, message/frame selection, rendered sprite pipeline, stage geometry, HUD behavior
-- `SmartImage.vue`: candidate waterfall loading, swap crossfade, `resolved` emit
-- `SettingsPanel.vue`: settings UI only; keep behavior in `settings.ts`, `App.vue`, or `player-composables.ts`
+- `player-composables.ts`: scene presentation (`useScenePresentation`), visibility transitions (`useSpriteVisibilityTransitions`), autoplay (`useAutoplay`), reduced-motion handling (`useReducedMotion`)
 - `status-macro.ts`: `{{vn_state}}` macro that formats `InitialPlayerState` as Ren'Py-style text for prompt injection
+- `index.ts`: mounts `App.vue` into `#th-renpy-player` and `SettingsPanel.vue` into `#extensions_settings2`. Imports `renpy-player.scss` once.
 - `context.md`: agent-facing source of truth; update when behavior changes
 
 ## Integration
@@ -34,9 +53,11 @@ Agent-facing context for `src/renpy-player`.
   - `getScriptId()`
   - `eventOn()`
   - `tavern_events`
+  - `registerMacroLike()`
 - `getChatMessages(id)[0]` is optional. Treat missing messages as normal when walking history or selecting a message id.
 - `index.ts` re-inserts the player host on `CHAT_CHANGED` and `MORE_MESSAGES_LOADED`, and unmounts both apps on `pagehide`.
-- `App.vue` recomputes selection on chat-history events such as receive, edit, update, delete, swipe, and load.
+- `useRenpyPlayerController()` owns lifecycle internally: reduced-motion setup/cleanup, tavern event subscriptions + disposal, autoplay stop + transition cleanup. It uses `onMounted` + `onScopeDispose`.
+- The controller recomputes selection on chat-history events such as receive, edit, update, delete, swipe, and load.
 
 ## Script Grammar
 
@@ -186,10 +207,12 @@ Important behaviors:
 
 ### Sprites
 
-Sprites use the `outfit_pose` layout:
+Sprites use the `outfit_pose` layout with pose-directory fallback:
 
-- Directory: `<assetRoot>/<character>/<outfit>/<pose>`
-- Base name order:
+- Primary directory: `<assetRoot>/<character>/<outfit>/<pose>`
+- If the primary pose directory has no matching candidate, additional directories are tried in order (up to 8 total):
+  `wantedPose` → `defaultPose` → each entry in `poseTokens` (deduplicated, preserving order)
+- Base name order within each directory:
   - blush: `<expression>-blush`, then `<expression>`
   - non-blush: `<expression>`
 
@@ -212,7 +235,7 @@ Only settings that affect parsing, frame building, asset lookup, or playback beh
 - `defaultExpression`
 - `globalPoseTokens`
 - `characterSpriteConfig`
-  - supported fields: `defaultOutfit`, `poseTokens`, `referenceHeight`, `baselineHeight`
+  - supported fields: `defaultOutfit`, `poseTokens`, `referenceHeight`
   - keys starting with `_` are ignored
   - invalid entries are partially sanitized instead of throwing
   - unknown fields are ignored
@@ -284,14 +307,14 @@ Defaults:
 ## Sharp Edges
 
 - This is not a general Ren'Py parser. Keep assumptions narrow.
-- Vue/Pinia/Zod helpers such as `ref`, `computed`, `watch`, `onMounted`, `onBeforeUnmount`, `createApp`, `createPinia`, `defineStore`, `z`, and `klona` are auto-imported by the webpack config. Tavern Helper APIs are host-page globals. Match the existing style unless the build config changes.
+- Vue/Pinia/Zod helpers such as `ref`, `computed`, `watch`, `onMounted`, `onBeforeUnmount`, `createApp`, `createPinia`, `defineStore`, `storeToRefs`, `z`, and `klona` are auto-imported by the webpack config. Tavern Helper APIs are host-page globals. Match the existing style unless the build config changes.
 - Only the first fenced code block gets special priority. Later fenced blocks are only considered when parsing falls back to the whole message.
 - `show` only treats `at ...` as valid when it is the trailing clause.
 - `in <outfit>` and `blush` are extracted before remaining tokens are interpreted as pose/expression.
 - When 2+ remaining tokens are present after parsing a `show`, only the first two are used.
 - `TransitionGroup` keys sprites by `renderKey = sprite.id` (currently the character id). Re-showing the same character usually updates the existing DOM node instead of recreating it, so enter/leave hooks only fire for genuinely added or removed characters.
 - Rendering can proceed even when asset candidates do not resolve.
-- Diagnostics in `App.vue` are a convenience view, not a spec.
+- Diagnostics in `DiagnosticsPanel.vue` are a convenience view, not a spec.
 
 ## When Editing This Module
 
@@ -301,16 +324,27 @@ Update these files together when behavior changes:
   - grammar, token resolution, ignored-line behavior, state rules, frame-building rules
 - `types.ts`
   - shared command, asset, frame, and state contracts
-- `settings.ts` or `App.vue`
-  - `settings.ts` for schema/default/persistence changes
-  - `App.vue` for playback, selection, rendering, and presentation behavior
+- `settings.ts`
+  - schema/default/persistence changes
+- `useRenpyPlayerController.ts`
+  - playback, selection, rendering, presentation behavior, lifecycle, tavern event wiring
 - `player-composables.ts`
   - scene transition timing in `useScenePresentation()`
   - visibility effects in `useSpriteVisibilityTransitions()`
   - autoplay in `useAutoplay()`
+- `SceneLayer.vue`
+  - scene rendering template (background, fade, sprites, transitions)
+- `ViewportOverlay.vue`
+  - HUD template (dialogue bar, transport controls, message stepper, frame counter)
+- `DiagnosticsPanel.vue`
+  - diagnostics UI template
 - `SmartImage.vue`
   - candidate fallback order, swap behavior, and `resolved` metadata
 - `status-macro.ts`
   - macro registration, output format, offstage filtering
+- `renpy-player.scss`
+  - all player styles; no `:deep()` — use descendant selectors
+- `player-context.ts`
+  - only when the controller type or injection mechanism changes
 
 Also update `context.md` whenever implemented behavior changes in a way an agent should know before editing.                                                                                                                                                                 
