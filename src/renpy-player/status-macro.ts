@@ -4,41 +4,48 @@ import { useRenpyPlayerSettingsStore } from './settings';
 
 let activeGenerationType: string | null = null;
 
-function formatPlayerStatus(state: InitialPlayerState): string {
-  const lines: string[] = [];
-  const hasBackground = !!state.backgroundName;
-  const sprites = Object.values(state.sprites).filter(
+function formatPlayerStatus(
+  state: InitialPlayerState,
+  defaults: { defaultPose: string; defaultExpression: string },
+): string {
+  const visibleSprites = Object.values(state.sprites).filter(
     (s: SpriteState) => s.position != null,
   );
-  const hasSprites = sprites.length > 0;
 
-  if (!hasBackground && !hasSprites) return '';
+  if (!state.backgroundName && visibleSprites.length === 0) return '';
 
-  lines.push('[Scene Status]');
+  const lines: string[] = [];
 
-  if (hasBackground) {
-    let bg = state.backgroundName!;
-    if (state.backgroundSegment) bg += ` (${state.backgroundSegment})`;
-    lines.push(`Background: ${bg}`);
+  if (state.backgroundName) {
+    let scene = `scene ${state.backgroundName}`;
+    if (state.backgroundSegment) scene += ` ${state.backgroundSegment}`;
+    lines.push(scene);
   }
 
   if (state.cameraTransform) {
-    lines.push(`Camera: ${state.cameraTransform}`);
+    lines.push(`camera at ${state.cameraTransform}`);
   }
 
-  if (hasSprites) {
-    lines.push('Characters:');
-    for (const sprite of sprites) {
-      const parts: string[] = [`${sprite.character}:`];
-      if (sprite.outfit) parts.push(`outfit=${sprite.outfit}`);
-      if (sprite.pose) parts.push(`pose=${sprite.pose}`);
-      if (sprite.expression) parts.push(`expression=${sprite.expression}`);
-      if (sprite.position) parts.push(`position=${sprite.position}`);
-      if (sprite.blush) parts.push('blush');
-      lines.push(`- ${parts.join(' ')}`);
+  for (const sprite of visibleSprites) {
+    const outfit = sprite.outfit ?? 'default';
+    const pose = sprite.pose ?? defaults.defaultPose;
+    const expression = sprite.expression ?? defaults.defaultExpression;
+    let line = `show ${sprite.character} in ${outfit} ${pose} ${expression}`;
+    if (sprite.blush) line += ' blush';
+    line += ` at ${sprite.position}`;
+    lines.push(line);
+  }
+
+  const visibleSet = new Set(visibleSprites.map((s: SpriteState) => s.id));
+  const offstage = Object.entries(state.rememberedOutfits).filter(
+    ([key]) => !visibleSet.has(key),
+  );
+  if (offstage.length > 0) {
+    lines.push('');
+    lines.push('[offstage]');
+    for (const [character, outfit] of offstage) {
+      lines.push(`${character}: ${outfit}`);
     }
-  } else {
-    lines.push('Characters: none');
   }
 
   return lines.join('\n');
@@ -79,7 +86,10 @@ function computePlayerStatusInner(): string {
   };
 
   const state = getInitialState(messagesBackwards, buildOptions);
-  return formatPlayerStatus(state);
+  return formatPlayerStatus(state, {
+    defaultPose: settings.value.defaultPose,
+    defaultExpression: settings.value.defaultExpression,
+  });
 }
 
 export function computePlayerStatus(): string {
@@ -99,7 +109,7 @@ export function registerPlayerStatusMacro(): { unregister: () => void } {
     activeGenerationType = null;
   });
   const macroHandle = registerMacroLike(
-    /\{\{player_status\}\}/gi,
+    /\{\{vn_state\}\}/gi,
     () => computePlayerStatus(),
   );
 

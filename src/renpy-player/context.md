@@ -18,6 +18,7 @@ Agent-facing context for `src/renpy-player`.
 - `App.vue`: store wiring, message/frame selection, rendered sprite pipeline, stage geometry, HUD behavior
 - `SmartImage.vue`: candidate waterfall loading, swap crossfade, `resolved` emit
 - `SettingsPanel.vue`: settings UI only; keep behavior in `settings.ts`, `App.vue`, or `player-composables.ts`
+- `status-macro.ts`: `{{vn_state}}` macro that formats `InitialPlayerState` as Ren'Py-style text for prompt injection
 - `context.md`: agent-facing source of truth; update when behavior changes
 
 ## Integration
@@ -154,6 +155,18 @@ Important behaviors:
 - Camera animation does not persist after `flush()`.
 - Explicit outfits are remembered even when the character is hidden.
 - `hide` removes the visible sprite but does not forget the remembered outfit.
+
+## Status Macro
+
+- Registered as `{{vn_state}}` via `registerPlayerStatusMacro()` in `status-macro.ts`.
+- Tracks `GENERATION_STARTED`/`ENDED` to distinguish regenerations from normal generation.
+- Replays chat history backwards through `getInitialState()`, then formats the result with `formatPlayerStatus()`.
+- `formatPlayerStatus` output (Ren'Py-style text):
+  - `scene <background> [<segment>]` — only if background is set
+  - `camera at <transform>` — only if camera transform is set
+  - `show <character> in <outfit> <pose> <expression>[ blush] at <position>` — one per visible sprite (`position != null`); falls back to `defaultPose`/`defaultExpression` from settings, and `outfit ?? 'default'`
+  - `[offstage]` section — blank-line separated; lists `rememberedOutfits` entries for characters not currently visible; omitted when empty
+  - Returns `''` if no background and no visible sprites.
 
 ## Asset Resolution
 
@@ -297,5 +310,7 @@ Update these files together when behavior changes:
   - autoplay in `useAutoplay()`
 - `SmartImage.vue`
   - candidate fallback order, swap behavior, and `resolved` metadata
+- `status-macro.ts`
+  - macro registration, output format, offstage filtering
 
 Also update `context.md` whenever implemented behavior changes in a way an agent should know before editing.                                                                                                                                                                 
