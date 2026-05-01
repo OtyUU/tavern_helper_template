@@ -2,6 +2,7 @@ import { createScriptIdDiv, teleportStyle } from '@util/script';
 import App from './App.vue';
 import SettingsPanel from './SettingsPanel.vue';
 import { registerPlayerStatusMacro } from './status-macro';
+import './renpy-player.scss';
 
 $(() => {
   const pinia = createPinia();
