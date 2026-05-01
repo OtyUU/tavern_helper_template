@@ -56,7 +56,7 @@
           <template v-else>
             <div class="renpy-player__hud-shell">
               <div class="renpy-player__dialogue-bar">
-                <div class="renpy-player__speaker">{{ currentFrame.speaker ?? 'Narrator' }}</div>
+                <div class="renpy-player__speaker">{{ visibleSpeaker }}</div>
                 <div class="renpy-player__text">{{ currentFrame.text ?? 'No dialogue on this frame.' }}</div>
               </div>
               <div class="renpy-player__hud-rail" @click.stop>
@@ -233,6 +233,12 @@ const {
   setup: setupReducedMotion,
   cleanup: cleanupReducedMotion,
 } = useReducedMotion();
+
+const motionMode = ref<'normal' | 'instant'>('normal');
+const effectsDisabled = computed(() =>
+  prefersReducedMotion.value || motionMode.value === 'instant'
+);
+
 const {
   onSpriteEnter,
   onSpriteLeave,
@@ -242,6 +248,7 @@ const {
   settings,
   isSceneTransitioning,
   prefersReducedMotion,
+  effectsDisabled,
 );
 const {
   displayedBackground,
@@ -253,6 +260,7 @@ const {
   settings,
   isSceneTransitioning,
   prepareSpriteVisibilityEffects,
+  effectsDisabled,
 );
 const lifecycleStopList: Array<() => void> = [];
 
@@ -303,12 +311,15 @@ const frames = computed(() => {
 });
 
 const currentFrame = computed(() => frames.value[frameIndex.value] ?? null);
+const visibleSpeaker = computed(() => {
+  return currentFrame.value?.speaker?.trim() ?? '';
+});
 const autoPlayDelayMs = computed(() => settings.value.autoPlayDelayMs);
 
 const hasFrames = computed(() => frames.value.length > 0);
 const isBusy = computed(() => isSceneTransitioning.value);
-const canRestart = computed(() => hasFrames.value && frameIndex.value > 0 && !isBusy.value);
-const canStepBack = computed(() => hasFrames.value && frameIndex.value > 0 && !isBusy.value);
+const canRestart = computed(() => hasFrames.value && frameIndex.value > 0);
+const canStepBack = computed(() => hasFrames.value && frameIndex.value > 0);
 const canStepForward = computed(() => hasFrames.value && frameIndex.value < frames.value.length - 1 && !isBusy.value);
 const canToggleAutoplay = computed(() => frames.value.length > 1 && !isBusy.value);
 const canSelectPreviousMessage = computed(() => (manualMessageId.value ?? 0) > 0);
@@ -338,7 +349,9 @@ const stageWrapStyle = computed(() => ({
 const stageStyle = computed(() => ({
   width: `${stageWidth.value}px`,
   height: `${settings.value.stageHeight}px`,
-  '--renpy-camera-transition-ms': `${settings.value.cameraTransitionMs}ms`,
+  '--renpy-camera-transition-ms': effectsDisabled.value
+    ? '0ms'
+    : `${settings.value.cameraTransitionMs}ms`,
   '--stage-height': `${settings.value.stageHeight}px`,
   '--renpy-ui-scale': hudScale.value.toFixed(3),
 
@@ -487,6 +500,9 @@ function getSpriteShellStyle(position: 'left' | 'center' | 'right') {
 }
 
 function getSpriteSwapDuration(sprite: PlayerFrame['sprites'][number]): number {
+  if (effectsDisabled.value) {
+    return 0;
+  }
   const previousSprite = previousDisplayedSprites.value.find(candidate => candidate.id === sprite.id);
   if (!previousSprite?.asset || !sprite.asset || previousSprite.asset.description === sprite.asset.description) {
     return 0;
@@ -526,7 +542,7 @@ watch(
 
 //#region 6) sprite visibility transitions (enter/leave)
 function getSpriteAnimationClass(animations?: string[]): string | undefined {
-  if (!animations?.length) {
+  if (effectsDisabled.value || !animations?.length) {
     return undefined;
   }
   if (animations.includes('shake')) {
@@ -542,7 +558,7 @@ function getSpriteAnimationClass(animations?: string[]): string | undefined {
 }
 
 function getCameraAnimationClass(animations?: string[]): string | undefined {
-  if (!animations?.length) {
+  if (effectsDisabled.value || !animations?.length) {
     return undefined;
   }
   if (animations.includes('shake')) {
@@ -588,8 +604,10 @@ function applyManualMessageId() {
   if (manualMessageId.value === null || Number.isNaN(manualMessageId.value)) {
     return;
   }
-
   manualMessageId.value = clampNumber(Math.round(manualMessageId.value), 0, maxMessageId.value);
+
+  motionMode.value = 'instant';
+
   selectMessage(manualMessageId.value);
 }
 
@@ -604,25 +622,36 @@ function nudgeManualMessageId(delta: number) {
   applyManualMessageId();
 }
 
+function setMotionModeForNav(targetIndex: number) {
+  motionMode.value = targetIndex < frameIndex.value ? 'instant' : 'normal';
+}
+
+function cancelAllEffects() {
+  clearTransitionTimeouts();
+  clearSpriteVisibilityTransitions();
+  isSceneTransitioning.value = false;
+}
+
 function jumpToStart() {
-  if (isSceneTransitioning.value) {
-    return;
-  }
+  setMotionModeForNav(0);
+  cancelAllEffects();
   frameIndex.value = 0;
 }
 
 function stepBackward() {
-  if (isSceneTransitioning.value) {
-    return;
-  }
-  frameIndex.value = Math.max(0, frameIndex.value - 1);
+  const target = Math.max(0, frameIndex.value - 1);
+  setMotionModeForNav(target);
+  cancelAllEffects();
+  frameIndex.value = target;
 }
 
 function stepForward() {
   if (isSceneTransitioning.value) {
     return;
   }
-  frameIndex.value = Math.min(frames.value.length - 1, frameIndex.value + 1);
+  const target = Math.min(frames.value.length - 1, frameIndex.value + 1);
+  setMotionModeForNav(target);
+  frameIndex.value = target;
 }
 
 function onStageClick() {

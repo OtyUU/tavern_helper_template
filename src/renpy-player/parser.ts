@@ -75,7 +75,7 @@ function unquote(value: string): string {
 
 function getSpeakerLabel(speaker: string): string {
   const raw = speaker.trim();
-  if (raw.toLowerCase() === 'narrator') return 'Narrator';
+  if (raw.toLowerCase() === 'narrator') return '';
   return raw.length > 1 ? raw.charAt(0).toUpperCase() + raw.slice(1) : raw.toUpperCase();
 }
 

@@ -48,6 +48,7 @@ export function useSpriteVisibilityTransitions(
   settings: Ref<SpriteVisibilityTransitionSettings>,
   isSceneTransitioning: Ref<boolean>,
   prefersReducedMotion: Ref<boolean>,
+  effectsDisabled: Ref<boolean>,
 ) {
   const spriteVisibilityAnimations = new WeakMap<Element, Animation>();
   const activeSpriteVisibilityAnimations = new Set<Animation>();
@@ -105,7 +106,7 @@ export function useSpriteVisibilityTransitions(
   }
 
   function resolveSpriteVisibilityDuration(baseDurationMs: number, effect: SpriteVisibilityEffect): number {
-    if (isSceneTransitioning.value || prefersReducedMotion.value || effect === 'none') {
+    if (isSceneTransitioning.value || prefersReducedMotion.value || effectsDisabled.value || effect === 'none') {
       return 0;
     }
     return Math.max(0, baseDurationMs);
@@ -287,6 +288,7 @@ export function useScenePresentation(
     previousSprites: PlayerFrame['sprites'],
     nextSprites: PlayerFrame['sprites'],
   ) => void,
+  effectsDisabled: Ref<boolean>,
 ) {
   const displayedBackground = ref<PlayerAsset | undefined>();
   const displayedSprites = ref<PlayerFrame['sprites']>([]);
@@ -330,6 +332,11 @@ export function useScenePresentation(
     }
 
     if (!prev || next.index === prev.index) {
+      applyDisplayedFrame(next);
+      return;
+    }
+
+    if (effectsDisabled.value) {
       applyDisplayedFrame(next);
       return;
     }
