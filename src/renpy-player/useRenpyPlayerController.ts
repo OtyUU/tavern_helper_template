@@ -1,4 +1,4 @@
-import { ref, computed, watch, onMounted, onScopeDispose, readonly } from 'vue';
+import { ref, computed, watch, onMounted, onScopeDispose, readonly, reactive } from 'vue';
 import { storeToRefs } from 'pinia';
 import { buildFrames, getInitialState, parseScriptFromMessage } from './parser';
 import {
@@ -554,7 +554,7 @@ export function useRenpyPlayerController() {
 
   // ─── Public API (grouped) ─────────────────────────────────────────────────
 
-  return {
+  return reactive({
     model: {
       parsedScript,
       frames,
@@ -621,7 +621,7 @@ export function useRenpyPlayerController() {
       getSpriteNaturalHeight,
       getSpriteNormalizationScale,
     },
-  };
+  });
 }
 
 export type RenpyPlayerController = ReturnType<typeof useRenpyPlayerController>;
