@@ -28,6 +28,21 @@ function unique(items: string[]): string[] {
   return [...new Set(items.filter(Boolean))];
 }
 
+const MAX_POSE_FALLBACKS = 8;
+
+function uniqueOrdered(items: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of items) {
+    const cleaned = (item ?? '').trim();
+    if (!cleaned) continue;
+    if (seen.has(cleaned)) continue;
+    seen.add(cleaned);
+    out.push(cleaned);
+  }
+  return out;
+}
+
 function trimTrailingSlash(value: string): string {
   return value.replace(/[\\/]+$/g, '');
 }
@@ -347,7 +362,7 @@ function createBackgroundAsset(command: SceneCommand, options: FrameBuildOptions
 
 // ─── Sprite candidate generation ─────────────────────────────────────────────
 
-function createSpriteAssetOutfitPose(
+function createSpriteAssetPoseFallbacks(
   character: string,
   outfit: string,
   pose: string,
@@ -358,16 +373,25 @@ function createSpriteAssetOutfitPose(
   const root = trimTrailingSlash(options.assetRoot);
   const char = character.toLowerCase();
   const out = outfit.toLowerCase();
-  const pos = pose.toLowerCase();
   const expr = expression.toLowerCase();
 
-  const dir = joinPath(root, char, out, pos);
-  const baseNames = blush ? [`${expr}-blush`, expr] : [expr];
-  const candidates = buildCandidates(dir, baseNames, options.assetExtensions);
+  const cfg = getCharacterConfig(character, options);
+  const poseFallbacks = getPoseFallbacks(pose, cfg.poseTokens, options.defaultPose);
 
-  if (candidates.length === 0) return undefined;
+  const baseNames = blush ? [`${expr}-blush`, expr] : [expr];
+
+  const candidates: string[] = [];
+  for (const poseCandidate of poseFallbacks) {
+    const dir = joinPath(root, char, out, poseCandidate.toLowerCase());
+    candidates.push(...buildCandidates(dir, baseNames, options.assetExtensions));
+  }
+
+  const finalCandidates = uniqueOrdered(candidates);
+
+  if (finalCandidates.length === 0) return undefined;
+
   return {
-    candidates,
+    candidates: finalCandidates,
     description: `${character}/${outfit}/${pose}/${expression}${blush ? '-blush' : ''}`,
   };
 }
@@ -383,6 +407,19 @@ function getCharacterConfig(
     defaultOutfit: cfg.defaultOutfit ?? 'default',
     poseTokens: cfg.poseTokens ?? options.globalPoseTokens,
   };
+}
+
+function getPoseFallbacks(
+  wantedPose: string | undefined,
+  poseTokens: string[],
+  defaultPose: string,
+): string[] {
+  const all = uniqueOrdered([
+    wantedPose ?? '',
+    defaultPose,
+    ...poseTokens,
+  ]);
+  return all.slice(0, MAX_POSE_FALLBACKS);
 }
 
 /**
@@ -453,9 +490,10 @@ function resolveShowState(
 }
 
 function buildSpriteAsset(state: SpriteState, options: FrameBuildOptions): PlayerAsset | undefined {
-  return createSpriteAssetOutfitPose(
+  const cfg = getCharacterConfig(state.character, options);
+  return createSpriteAssetPoseFallbacks(
     state.character,
-    state.outfit ?? 'default',
+    state.outfit ?? cfg.defaultOutfit,
     state.pose ?? options.defaultPose,
     state.expression ?? options.defaultExpression,
     state.blush ?? false,
