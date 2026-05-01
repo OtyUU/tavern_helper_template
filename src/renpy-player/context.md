@@ -20,7 +20,7 @@ Agent-facing context for `src/renpy-player`.
 
 - `App.vue`: thin wrapper — creates controller, provides it, renders `<PlayerStage />`. No logic.
 - `PlayerStage.vue`: stage root — renders `<SceneLayer />` + `<ViewportOverlay />` inside the stage div with click handler.
-- `SceneLayer.vue`: scene rendering — background `SmartImage`, scene fade div, gradient, sprite `TransitionGroup` with enter/leave hooks.
+- `SceneLayer.vue`: scene rendering — background `SmartImage` (bound to `controller.scene.displayedBackground`, not `currentFrame.background`), scene fade div, gradient, sprite `TransitionGroup` with enter/leave hooks.
 - `ViewportOverlay.vue`: HUD overlay — empty state, dialogue bar (speaker + text), transport controls, autoplay button, message selection stepper, frame counter. Renders `<DiagnosticsPanel />`.
 - `DiagnosticsPanel.vue`: diagnostics `<details>` UI — reads controller.diagnostics, controller.model, controller.scene.
 - `SmartImage.vue`: candidate waterfall loading, swap crossfade, `resolved` emit.
@@ -164,7 +164,7 @@ Important behaviors:
 - Sprite render order comes from `spriteOrder`; re-showing a character moves it to the top.
 - `flush()` clears only transient animation state:
   - pending camera animations
-  - one-shot sprite animations
+  - one-shot sprite animations (the `animations` field on each `SpriteState`)
 - `getInitialState()` also calls `flush()` so one-shot history animations do not leak into frame 0 of the current message.
 
 ### Inheritance
@@ -207,11 +207,11 @@ Important behaviors:
 
 ### Sprites
 
-Sprites use the `outfit_pose` layout with pose-directory fallback:
+Sprites use the `outfit_pose` layout with a pose fallback chain:
 
-- Primary directory: `<assetRoot>/<character>/<outfit>/<pose>`
-- If the primary pose directory has no matching candidate, additional directories are tried in order (up to 8 total):
-  `wantedPose` → `defaultPose` → each entry in `poseTokens` (deduplicated, preserving order)
+- The full candidate list is built upfront by iterating a deduplicated, ordered pose directory list and combining it with the expression base names. `SmartImage` then tries candidates in order until one resolves — the player does not check individual directories before building the list.
+- Pose directory order (up to 8 total, deduplicated): `wantedPose` → `defaultPose` → each entry in `poseTokens`
+- Each pose directory tried: `<assetRoot>/<character>/<outfit>/<poseCandidate>`
 - Base name order within each directory:
   - blush: `<expression>-blush`, then `<expression>`
   - non-blush: `<expression>`
@@ -281,28 +281,47 @@ Defaults:
 
 ## Runtime Behavior
 
+- Effects disabled (`effectsDisabled`):
+  - `effectsDisabled = prefersReducedMotion || motionMode === 'instant'`
+  - When true, all transition durations are zeroed: camera, scene fade, sprite enter/exit, and sprite swap.
+  - `motionMode` is set to `'instant'` by `applyManualMessageId()` (manual message jumps) and by `setMotionModeForNav()` when navigating to an earlier frame index (step backward, jump to start).
+  - `motionMode` resets to `'normal'` when navigating forward.
+
 - Scene transitions:
   - `next.isNewScene` triggers fade-to-black behavior in `useScenePresentation()`
   - if `sceneTransitionMs <= 0`, scene changes apply immediately
   - otherwise background swaps at midpoint and sprites reappear at the end
+  - the fade div's animation duration is bound to `sceneTransitionMs` via `sceneFadeStyle`
+
 - Camera:
   - `cameraTransform` controls computed background scale, sprite scale, and sprite Y translation
   - transition duration comes from `cameraTransitionMs`
   - `shake` becomes a one-frame class on the scene layer
+
 - Sprite visibility:
   - enter/exit effects currently support `fade` and `none`
   - enter/leave visibility uses `element.animate()` in `player-composables.ts`, not CSS transitions
-  - durations are zeroed during scene transitions and when reduced motion is active
-- Sprite swap timing:
-  - expression-only and blush-only changes use `expressionChangeMs`
-  - pose/outfit/silhouette changes use `poseChangeMs`
+  - durations are zeroed during scene transitions and when `effectsDisabled` is true
+
+- Sprite swap timing (`getSpriteSwapDuration`):
+  - returns 0 when `effectsDisabled` is true, or when the asset description is unchanged
+  - pose or outfit change → `poseChangeMs`
+  - expression or blush change (no pose change) → `expressionChangeMs`
+  - asset changed but pose, outfit, expression, and blush all compare equal → falls back to `poseChangeMs`
+
+- Sprite normalization:
+  - natural height is recorded the first time `onSpriteResolved` fires for a given sprite id; subsequent resolves for the same id are ignored
+  - normalization scale = `referenceHeight / naturalHeight`
+
 - Autoplay:
   - advances on an interval using `autoPlayDelayMs`
   - stops at the last frame
   - does not advance while a scene transition is active
+
 - Stage click:
+  - does nothing if `!hasFrames` or `isSceneTransitioning`
   - pauses autoplay if active
-  - otherwise advances one frame when possible
+  - otherwise advances one frame
 
 ## Sharp Edges
 
@@ -313,6 +332,7 @@ Defaults:
 - `in <outfit>` and `blush` are extracted before remaining tokens are interpreted as pose/expression.
 - When 2+ remaining tokens are present after parsing a `show`, only the first two are used.
 - `TransitionGroup` keys sprites by `renderKey = sprite.id` (currently the character id). Re-showing the same character usually updates the existing DOM node instead of recreating it, so enter/leave hooks only fire for genuinely added or removed characters.
+- `SceneLayer` renders `displayedBackground` and `displayedSprites` (the presentation layer managed by `useScenePresentation`), not `currentFrame` directly. These can differ during scene transitions.
 - Rendering can proceed even when asset candidates do not resolve.
 - Diagnostics in `DiagnosticsPanel.vue` are a convenience view, not a spec.
 
@@ -347,4 +367,4 @@ Update these files together when behavior changes:
 - `player-context.ts`
   - only when the controller type or injection mechanism changes
 
-Also update `context.md` whenever implemented behavior changes in a way an agent should know before editing.                                                                                                                                                                 
+Also update `context.md` whenever implemented behavior changes in a way an agent should know before editing.

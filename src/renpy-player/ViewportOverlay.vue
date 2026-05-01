@@ -10,8 +10,16 @@
     <template v-else>
       <div class="renpy-player__hud-shell">
         <div class="renpy-player__dialogue-bar">
-          <div class="renpy-player__speaker">{{ controller.dialogue.visibleSpeaker }}</div>
-          <div class="renpy-player__text">{{ controller.dialogue.dialogueTextFull }}</div>
+          <div
+            class="renpy-player__speaker"
+            :class="controller.dialogue.speakerRevealed ? 'renpy-player__speaker--visible' : 'renpy-player__speaker--hidden'"
+          >{{ controller.dialogue.visibleSpeaker }}</div>
+          <div class="renpy-player__text"><span
+            v-for="(grapheme, i) in controller.dialogue.graphemes"
+            :key="i"
+            class="renpy-player__char"
+            :class="i < controller.dialogue.revealedCharCount ? 'renpy-player__char--visible' : 'renpy-player__char--hidden'"
+          >{{ grapheme }}</span></div>
         </div>
         <div class="renpy-player__hud-rail" @click.stop>
           <div class="renpy-player__rail-row">

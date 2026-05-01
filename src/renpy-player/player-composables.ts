@@ -214,60 +214,73 @@ export function useSpriteVisibilityTransitions(
 export function useAutoplay(
   frames: Ref<PlayerFrame[]>,
   frameIndex: Ref<number>,
-  isSceneTransitioning: Ref<boolean>,
-  autoPlayDelayMs: Ref<number>,
+  canAutoAdvanceNow: Ref<boolean>,
+  autoAdvanceDelayMs: Ref<number>,
   stepForward: () => void,
 ) {
   const isAutoplaying = ref(false);
-  const autoplayHandle = ref<number | null>(null);
+  let pendingTimeout: number | null = null;
+
+  function cancelPending() {
+    if (pendingTimeout !== null) {
+      window.clearTimeout(pendingTimeout);
+      pendingTimeout = null;
+    }
+  }
 
   function stopAutoplay() {
-    if (autoplayHandle.value !== null) {
-      window.clearInterval(autoplayHandle.value);
-      autoplayHandle.value = null;
-    }
+    cancelPending();
     isAutoplaying.value = false;
   }
 
+  function scheduleAdvance() {
+    cancelPending();
+    if (!canAutoAdvanceNow.value) return;
+    pendingTimeout = window.setTimeout(() => {
+      pendingTimeout = null;
+      if (!isAutoplaying.value) return;
+      stepForward();
+      if (isAutoplaying.value && canAutoAdvanceNow.value) {
+        scheduleAdvance();
+      }
+    }, autoAdvanceDelayMs.value);
+  }
+
   function toggleAutoplay() {
-    if (isSceneTransitioning.value) {
-      return;
-    }
     if (isAutoplaying.value) {
       stopAutoplay();
       return;
     }
-    if (frames.value.length <= 1) {
-      return;
-    }
-
+    if (frames.value.length <= 1) return;
     isAutoplaying.value = true;
-    autoplayHandle.value = window.setInterval(() => {
-      if (isSceneTransitioning.value) {
-        return;
-      }
-      if (frameIndex.value >= frames.value.length - 1) {
-        stopAutoplay();
-        return;
-      }
-      stepForward();
-    }, autoPlayDelayMs.value);
+    scheduleAdvance();
   }
 
-  watch(
-    () => autoPlayDelayMs.value,
-    () => {
-      if (isAutoplaying.value) {
+  watch(canAutoAdvanceNow, (can) => {
+    if (!isAutoplaying.value) return;
+    if (can) {
+      scheduleAdvance();
+    } else {
+      cancelPending();
+      if (frames.value.length > 0 && frameIndex.value >= frames.value.length - 1) {
         stopAutoplay();
-        toggleAutoplay();
+      }
+    }
+  });
+
+  watch(
+    () => autoAdvanceDelayMs.value,
+    () => {
+      if (isAutoplaying.value && canAutoAdvanceNow.value) {
+        scheduleAdvance();
       }
     },
   );
 
   watch(
     () => frames.value.length,
-    frameCount => {
-      if (frameCount <= 1) {
+    (count) => {
+      if (count <= 1) {
         stopAutoplay();
       }
     },
@@ -375,5 +388,185 @@ export function useScenePresentation(
     previousDisplayedSprites,
     clearTransitionTimeouts,
     applyFrame,
+  };
+}
+
+const SENTENCE_ENDERS = new Set(['.', '!', '?', '…', '。', '！', '？']);
+const CLAUSE_MARKS = new Set([',', ';', ':', '、', '；', '：', '—']);
+
+type DialogueRevealSettings = {
+  textSpeedMs: number;
+  textFadeMs: number;
+  sentencePauseMs: number;
+  commaPauseMs: number;
+  speakerFadeMs: number;
+  speakerLeadInMs: number;
+};
+
+function splitToGraphemes(text: string): string[] {
+  if (typeof Intl !== 'undefined' && typeof Intl.Segmenter !== 'undefined') {
+    return Array.from(
+      new Intl.Segmenter('ja', { granularity: 'grapheme' }).segment(text),
+      s => s.segment,
+    );
+  }
+  return [...text];
+}
+
+export function useDialogueReveal(
+  settings: Ref<DialogueRevealSettings>,
+  currentFrame: Ref<PlayerFrame | null>,
+  effectsDisabled: Ref<boolean>,
+) {
+  const graphemes = ref<string[]>([]);
+  const revealedCharCount = ref(0);
+  const speakerRevealed = ref(true);
+  const isRevealing = ref(false);
+  const isFullyRevealed = ref(true);
+  let revealGeneration = 0;
+
+  function scheduleFadeTail(gen: number) {
+    if (settings.value.textFadeMs <= 0 || effectsDisabled.value) {
+      isFullyRevealed.value = true;
+      return;
+    }
+    isFullyRevealed.value = false;
+    window.setTimeout(() => {
+      if (revealGeneration === gen) {
+        isFullyRevealed.value = true;
+      }
+    }, settings.value.textFadeMs);
+  }
+
+  function skipReveal() {
+    revealGeneration++;
+    if (graphemes.value.length === 0) {
+      return;
+    }
+    const gen = revealGeneration;
+    revealedCharCount.value = graphemes.value.length;
+    speakerRevealed.value = true;
+    isRevealing.value = false;
+    scheduleFadeTail(gen);
+  }
+
+  function clearReveal() {
+    revealGeneration++;
+    graphemes.value = [];
+    revealedCharCount.value = 0;
+    speakerRevealed.value = false;
+    isRevealing.value = false;
+    isFullyRevealed.value = true;
+  }
+
+  function startReveal(
+    text: string,
+    prevSpeaker: string | undefined,
+    currentSpeaker: string | undefined,
+  ) {
+    revealGeneration++;
+    const gen = revealGeneration;
+    const chars = splitToGraphemes(text);
+    graphemes.value = chars;
+
+    if (effectsDisabled.value) {
+      revealedCharCount.value = chars.length;
+      speakerRevealed.value = true;
+      isRevealing.value = false;
+      scheduleFadeTail(gen);
+      return;
+    }
+
+    const speaker = currentSpeaker?.trim() ?? '';
+    const prevSpk = prevSpeaker?.trim() ?? '';
+    const hasSpeakerChange = speaker !== '' && speaker !== prevSpk;
+
+    revealedCharCount.value = 0;
+    isRevealing.value = true;
+    isFullyRevealed.value = false;
+
+    if (hasSpeakerChange) {
+      speakerRevealed.value = false;
+      window.setTimeout(() => {
+        if (revealGeneration === gen) {
+          speakerRevealed.value = true;
+        }
+      }, settings.value.speakerFadeMs);
+    } else {
+      speakerRevealed.value = true;
+    }
+
+    const speakerIntroDelay = hasSpeakerChange
+      ? settings.value.speakerFadeMs + settings.value.speakerLeadInMs
+      : 0;
+
+    if (settings.value.textSpeedMs <= 0) {
+      window.setTimeout(() => {
+        if (revealGeneration !== gen) return;
+        revealedCharCount.value = chars.length;
+        isRevealing.value = false;
+        scheduleFadeTail(gen);
+      }, speakerIntroDelay);
+      return;
+    }
+
+    let cumulativeDelay = speakerIntroDelay;
+    for (let i = 0; i < chars.length; i++) {
+      const charIdx = i;
+      const charDelay = cumulativeDelay;
+      window.setTimeout(() => {
+        if (revealGeneration !== gen) return;
+        revealedCharCount.value = charIdx + 1;
+        if (charIdx === chars.length - 1) {
+          isRevealing.value = false;
+          scheduleFadeTail(gen);
+        }
+      }, charDelay);
+
+      let pause = 0;
+      if (SENTENCE_ENDERS.has(chars[i])) {
+        pause = settings.value.sentencePauseMs;
+      } else if (CLAUSE_MARKS.has(chars[i])) {
+        pause = settings.value.commaPauseMs;
+      }
+      cumulativeDelay += settings.value.textSpeedMs + pause;
+    }
+  }
+
+  watch(
+    currentFrame,
+    (nextFrame, prevFrame) => {
+      if (!nextFrame || !nextFrame.text) {
+        revealGeneration++;
+        graphemes.value = [];
+        revealedCharCount.value = 0;
+        speakerRevealed.value = true;
+        isRevealing.value = false;
+        isFullyRevealed.value = true;
+        return;
+      }
+      startReveal(nextFrame.text, prevFrame?.speaker, nextFrame.speaker);
+    },
+    { immediate: true },
+  );
+
+  watch(effectsDisabled, (disabled) => {
+    if (disabled && (isRevealing.value || !isFullyRevealed.value)) {
+      revealGeneration++;
+      revealedCharCount.value = graphemes.value.length;
+      speakerRevealed.value = true;
+      isRevealing.value = false;
+      isFullyRevealed.value = true;
+    }
+  });
+
+  return {
+    graphemes,
+    revealedCharCount,
+    speakerRevealed,
+    isRevealing,
+    isFullyRevealed,
+    skipReveal,
+    clearReveal,
   };
 }

@@ -40,16 +40,62 @@
             <input v-model.number="settings.stageHeight" class="text_pole" type="number" min="200" max="1200" step="10" />
             <small>The VN viewport height. Bleed background shows when the panel is wider than height x 16/9.</small>
           </div>
-
-          <div class="renpy-player-settings__field">
-            <label>Autoplay delay (ms)</label>
-            <input v-model.number="settings.autoPlayDelayMs" class="text_pole" type="number" min="500" max="20000" step="100" />
-          </div>
         </div>
 
         <div class="renpy-player-settings__field renpy-player-settings__checkbox">
           <input v-model="settings.followLatestPlayable" type="checkbox" />
           <label>Follow the latest playable chat message automatically</label>
+        </div>
+      </section>
+
+      <section class="renpy-player-settings__section">
+        <div class="renpy-player-settings__section-header">
+          <h4>Dialogue Reveal</h4>
+          <p>Fine-tune the VN-style typewriter effect and speaker intro animation.</p>
+        </div>
+
+        <div class="renpy-player-settings__grid">
+          <div class="renpy-player-settings__field">
+            <label>Text speed (ms)</label>
+            <input v-model.number="settings.textSpeedMs" class="text_pole" type="number" min="0" max="500" step="5" />
+            <small>Delay between each grapheme. 0 = instant.</small>
+          </div>
+
+          <div class="renpy-player-settings__field">
+            <label>Text fade (ms)</label>
+            <input v-model.number="settings.textFadeMs" class="text_pole" type="number" min="0" max="1000" step="10" />
+            <small>Per-character opacity transition duration.</small>
+          </div>
+
+          <div class="renpy-player-settings__field">
+            <label>Sentence pause (ms)</label>
+            <input v-model.number="settings.sentencePauseMs" class="text_pole" type="number" min="0" max="5000" step="50" />
+            <small>Extra delay after <code>. ! ? … 。 ！ ？</code></small>
+          </div>
+
+          <div class="renpy-player-settings__field">
+            <label>Comma pause (ms)</label>
+            <input v-model.number="settings.commaPauseMs" class="text_pole" type="number" min="0" max="2000" step="10" />
+            <small>Extra delay after <code>, ; : — 、 ； ：</code></small>
+          </div>
+
+          <div class="renpy-player-settings__field">
+            <label>Speaker fade (ms)</label>
+            <input v-model.number="settings.speakerFadeMs" class="text_pole" type="number" min="0" max="2000" step="10" />
+            <small>Speaker name opacity transition when the speaker changes.</small>
+          </div>
+
+          <div class="renpy-player-settings__field">
+            <label>Speaker lead-in (ms)</label>
+            <input v-model.number="settings.speakerLeadInMs" class="text_pole" type="number" min="0" max="2000" step="10" />
+            <small>Pause after speaker intro before typing starts.</small>
+          </div>
+
+          <div class="renpy-player-settings__field">
+            <label>Auto-advance delay (ms)</label>
+            <input v-model.number="settings.autoAdvanceDelayMs" class="text_pole" type="number" min="0" max="30000" step="100" />
+            <small>Wait after reveal finishes before autoplay advances. 0 = immediate.</small>
+          </div>
         </div>
       </section>
 

@@ -203,6 +203,13 @@
   letter-spacing: 0.05em;
   line-height: 1.2;
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8), 0 0 4px rgba(0, 0, 0, 0.5);
+  transition: opacity var(--renpy-speaker-fade-ms) ease;
+}
+.renpy-player__speaker--visible {
+  opacity: 1;
+}
+.renpy-player__speaker--hidden {
+  opacity: 0;
 }
 .renpy-player__text {
   color: #fff;
@@ -212,6 +219,15 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8), 0 0 4px rgba(0, 0, 0, 0.5);
+}
+.renpy-player__char {
+  transition: opacity var(--renpy-text-fade-ms) ease;
+}
+.renpy-player__char--visible {
+  opacity: 1;
+}
+.renpy-player__char--hidden {
+  opacity: 0;
 }
 .renpy-player__empty-state {
   position: absolute;

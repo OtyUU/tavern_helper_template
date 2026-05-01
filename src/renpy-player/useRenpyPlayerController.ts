@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia';
 import { buildFrames, getInitialState, parseScriptFromMessage } from './parser';
 import {
   useAutoplay,
+  useDialogueReveal,
   useReducedMotion,
   useScenePresentation,
   useSpriteVisibilityTransitions,
@@ -133,11 +134,21 @@ export function useRenpyPlayerController() {
 
   const visibleSpeaker = computed(() => currentFrame.value?.speaker?.trim() ?? '');
 
+  const {
+    graphemes,
+    revealedCharCount,
+    speakerRevealed,
+    isRevealing,
+    isFullyRevealed,
+    skipReveal,
+    clearReveal,
+  } = useDialogueReveal(settings, currentFrame, effectsDisabled);
+
   const dialogueTextFull = computed(
     () => currentFrame.value?.text ?? 'No dialogue on this frame.',
   );
 
-  const autoPlayDelayMs = computed(() => settings.value.autoPlayDelayMs);
+  const autoAdvanceDelayMs = computed(() => settings.value.autoAdvanceDelayMs);
 
   const hasFrames = computed(() => frames.value.length > 0);
   const isBusy = computed(() => isSceneTransitioning.value);
@@ -147,6 +158,14 @@ export function useRenpyPlayerController() {
     () => hasFrames.value && frameIndex.value < frames.value.length - 1 && !isBusy.value,
   );
   const canToggleAutoplay = computed(() => frames.value.length > 1 && !isBusy.value);
+
+  const canAutoAdvanceNow = computed(
+    () =>
+      hasFrames.value &&
+      !isSceneTransitioning.value &&
+      isFullyRevealed.value &&
+      frameIndex.value < frames.value.length - 1,
+  );
   const canSelectPreviousMessage = computed(() => (manualMessageId.value ?? 0) > 0);
   const canSelectNextMessage = computed(() => {
     if (manualMessageId.value === null || Number.isNaN(manualMessageId.value)) {
@@ -202,6 +221,13 @@ export function useRenpyPlayerController() {
     '--renpy-stepper-input-width': `${clampNumber(Math.round(34 * hudScale.value), 30, 44)}px`,
     '--renpy-meta-size': `${clampNumber(Math.round(10 * hudScale.value), 9, 12)}px`,
     '--renpy-input-size': `${clampNumber(Math.round(13 * hudScale.value), 11, 17)}px`,
+
+    '--renpy-text-fade-ms': effectsDisabled.value
+      ? '0ms'
+      : `${settings.value.textFadeMs}ms`,
+    '--renpy-speaker-fade-ms': effectsDisabled.value
+      ? '0ms'
+      : `${settings.value.speakerFadeMs}ms`,
   }));
 
   function resolveActiveCameraPreset(transform?: 'closeup' | 'medium') {
@@ -272,8 +298,6 @@ export function useRenpyPlayerController() {
           '--sprite-normalize-scale': `${normalizationScale}`,
         },
         swapDurationMs: getSpriteSwapDuration(sprite),
-        referenceHeight,
-        normalizationScale,
       };
     }),
   );
@@ -294,7 +318,6 @@ export function useRenpyPlayerController() {
 
   function onSpriteResolved(
     spriteId: string,
-    _assetKey: string,
     payload: { naturalHeight: number },
   ) {
     if (characterNaturalHeights.value[spriteId] === undefined) {
@@ -448,6 +471,7 @@ export function useRenpyPlayerController() {
   }
 
   function cancelAllEffects() {
+    clearReveal();
     clearTransitionTimeouts();
     clearSpriteVisibilityTransitions();
     isSceneTransitioning.value = false;
@@ -485,6 +509,11 @@ export function useRenpyPlayerController() {
       return;
     }
 
+    if (isRevealing.value) {
+      skipReveal();
+      return;
+    }
+
     stepForward();
   }
 
@@ -493,8 +522,8 @@ export function useRenpyPlayerController() {
   const { isAutoplaying, stopAutoplay, toggleAutoplay } = useAutoplay(
     frames,
     frameIndex,
-    isSceneTransitioning,
-    autoPlayDelayMs,
+    canAutoAdvanceNow,
+    autoAdvanceDelayMs,
     stepForward,
   );
 
@@ -548,6 +577,7 @@ export function useRenpyPlayerController() {
     lifecycleStopList.length = 0;
 
     stopAutoplay();
+    clearReveal();
     clearTransitionTimeouts();
     clearSpriteVisibilityTransitions();
   });
@@ -587,6 +617,10 @@ export function useRenpyPlayerController() {
     dialogue: {
       visibleSpeaker,
       dialogueTextFull,
+      graphemes,
+      revealedCharCount,
+      speakerRevealed,
+      isRevealing,
     },
 
     transport: {

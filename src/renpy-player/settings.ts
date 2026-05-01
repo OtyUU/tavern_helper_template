@@ -28,6 +28,13 @@ const BaseSettingsSchema = z
     defaultPose: z.string().default('base'),
     defaultExpression: z.string().default('neutral'),
     globalPoseTokens: z.string().default('base,burst,lean,sit,stand'),
+    textSpeedMs: z.coerce.number().int().min(0).max(500).default(30),
+    textFadeMs: z.coerce.number().int().min(0).max(1000).default(120),
+    sentencePauseMs: z.coerce.number().int().min(0).max(5000).default(400),
+    commaPauseMs: z.coerce.number().int().min(0).max(2000).default(150),
+    speakerFadeMs: z.coerce.number().int().min(0).max(2000).default(250),
+    speakerLeadInMs: z.coerce.number().int().min(0).max(2000).default(120),
+    autoAdvanceDelayMs: z.coerce.number().int().min(0).max(30000).default(2500),
     autoPlayDelayMs: z.coerce.number().int().min(500).max(20000).default(2500),
     followLatestPlayable: z.boolean().default(true),
     preferredMessageId: z.preprocess(value => {
