@@ -139,7 +139,7 @@ Events used by this module and what their callbacks receive:
 | `MESSAGE_SWIPED` | `(message_id: number) => void` |
 | `MORE_MESSAGES_LOADED` | `() => void` |
 | `GENERATION_STARTED` | `(type: string) => void` — used in `status-macro.ts` to distinguish swipe/regenerate from normal generation |
-| `GENERATION_ENDED` | `(message_id: number) => void` — used in `status-macro.ts` |
+| `GENERATION_ENDED` | `() => void` — used in `status-macro.ts` (handler takes no arguments) |
 
 ## Script Grammar
 
@@ -402,7 +402,7 @@ Defaults:
   - durations are zeroed during scene transitions and when `effectsDisabled` is true
 
 - Sprite swap timing (`getSpriteSwapDuration`):
-  - returns 0 when `effectsDisabled` is true, or when the asset description is unchanged
+  - returns 0 when `effectsDisabled` is true, when the previous or current sprite has no resolved asset, or when the asset description is unchanged
   - pose or outfit change → `poseChangeMs`
   - expression or blush change (no pose change) → `expressionChangeMs`
   - asset changed but pose, outfit, expression, and blush all compare equal → falls back to `poseChangeMs`
@@ -413,7 +413,7 @@ Defaults:
 
 - Dialogue reveal (`useDialogueReveal`):
   - Exposes: `graphemes`, `revealedCharCount`, `speakerRevealed`, `isRevealing`, `isFullyRevealed`, `skipReveal()`, `clearReveal()`
-  - Text is split into graphemes using `Intl.Segmenter` (with `Array.from` fallback)
+  - Text is split into graphemes using `Intl.Segmenter` (with `[...text]` spread fallback over Unicode code points)
   - Typewriter reveal: each grapheme becomes visible after `textSpeedMs` + optional punctuation pause
   - Punctuation sets:
     - sentence enders: `. ! ? … 。 ！ ？` → `sentencePauseMs` delay
@@ -429,7 +429,7 @@ Defaults:
   - Watch on `effectsDisabled` defensively completes any in-progress reveal when it becomes `true`
   - CSS variables `--renpy-text-fade-ms` and `--renpy-speaker-fade-ms` control per-char and speaker opacity transitions in the stylesheet; zeroed when `effectsDisabled`
   - `ViewportOverlay.vue` renders text as individual `<span>` elements keyed by index with `renpy-player__char--visible`/`--hidden` classes; speaker uses `renpy-player__speaker--visible`/`--hidden`
-  - Controller exposes `dialogue.graphemes`, `dialogue.revealedCharCount`, `dialogue.speakerRevealed`, `dialogue.isRevealing` in the public API
+  - Controller exposes `dialogue.visibleSpeaker`, `dialogue.dialogueTextFull`, `dialogue.graphemes`, `dialogue.revealedCharCount`, `dialogue.speakerRevealed`, `dialogue.isRevealing` in the public API
 
 - Autoplay:
   - gate-based scheduling using `canAutoAdvanceNow` (requires `isFullyRevealed`, `!isSceneTransitioning`, not on last frame)
