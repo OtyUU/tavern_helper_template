@@ -76,7 +76,7 @@ ChatMessage {
 
 ### Controller & State
 
-- `useRenpyPlayerController.ts`: orchestration composable — store wiring, message/frame selection, rendered sprite pipeline, stage geometry, dialogue reveal wiring, lifecycle (`onMounted`/`onScopeDispose`), tavern event subscriptions, autoplay stop + reveal + transition cleanup. Exposes grouped API: `model`, `stage`, `scene`, `dialogue`, `transport`, `selection`, `autoplay`, `diagnostics`.
+- `useRenpyPlayerController.ts`: orchestration composable — store wiring, message/frame selection, rendered sprite pipeline, stage geometry, dialogue reveal wiring, lifecycle (`onMounted`/`onScopeDispose`), targeted tavern event handlers (full re-sync vs lightweight refresh depending on event type and message position), autoplay stop + reveal + transition cleanup. The `frames` pipeline is split into `buildOptions` (shared computed), `inheritedState` (history replay, keyed on `historyTrigger`), and `frames` (frame building from `inheritedState` + `parsedScript`). Exposes grouped API: `model`, `stage`, `scene`, `dialogue`, `transport`, `selection`, `autoplay`, `diagnostics`.
 - `player-context.ts`: `InjectionKey<RenpyPlayerController>` + `useRenpyPlayer()` inject helper. All extracted components inject the controller via this module.
 
 ### Vue Components
@@ -119,7 +119,11 @@ ChatMessage {
 - `getChatMessages(id)[0]` is optional. Treat missing messages as normal when walking history or selecting a message id.
 - `index.ts` re-inserts the player host on `CHAT_CHANGED` and `MORE_MESSAGES_LOADED`, and unmounts both apps on `pagehide`.
 - `useRenpyPlayerController()` owns lifecycle internally: reduced-motion setup/cleanup, tavern event subscriptions + disposal, autoplay stop + reveal clear + transition cleanup. It uses `onMounted` + `onScopeDispose`.
-- The controller recomputes selection on chat-history events such as receive, edit, update, delete, swipe, and load.
+- The controller uses targeted event handlers for chat-history events:
+  - `CHAT_CHANGED`, `MORE_MESSAGES_LOADED`, `MESSAGE_DELETED` → full re-sync (`historyTrigger` increment + message re-selection + history replay).
+  - `MESSAGE_RECEIVED` → if `followLatestPlayable`, checks if the new message has playable commands; if so, selects it directly (no history replay); if not, skips entirely. If not following latest, skips when the new message is after the current position.
+  - `MESSAGE_EDITED`, `MESSAGE_UPDATED`, `MESSAGE_SWIPED` → if the changed message is the current one, only refreshes `currentMessage` (parsedScript/frames recompute without history replay); if it's earlier, full re-sync; if later, skips.
+  - The `frames` computed is split into `inheritedState` (depends on `historyTrigger` and `currentMessage.message_id`) and `frames` (depends on `inheritedState` and `parsedScript`). Editing the current message only triggers frame-building, not history replay.
 
 ### Event Callback Signatures
 

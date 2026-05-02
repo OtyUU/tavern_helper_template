@@ -28,7 +28,7 @@ export function useRenpyPlayerController() {
   const currentMessage = ref<ChatMessage | null>(null);
 
   // historyTrigger forces recomputation because getChatMessages() is not
-  // reactive.  syncMessageSelection() increments it on chat events.
+  // reactive.  fullSync() increments it on chat events.
   const historyTrigger = ref(0);
 
   const frameIndex = ref(0);
@@ -99,8 +99,17 @@ export function useRenpyPlayerController() {
     () => parseScriptFromMessage(currentMessage.value?.message ?? ''),
   );
 
-  const frames = computed(() => {
-    void historyTrigger.value; // ensure reactivity when events fire
+  const buildOptions = computed(() => ({
+    assetRoot: settings.value.assetRoot,
+    assetExtensions: assetExtensions.value,
+    characterSpriteConfig: characterSpriteConfig.value,
+    defaultPose: settings.value.defaultPose,
+    defaultExpression: settings.value.defaultExpression,
+    globalPoseTokens: globalPoseTokens.value,
+  }));
+
+  const inheritedState = computed(() => {
+    void historyTrigger.value;
 
     const history: string[] = [];
     const currentId = currentMessage.value?.message_id;
@@ -113,22 +122,15 @@ export function useRenpyPlayerController() {
       }
     }
 
-    const buildOptions = {
-      assetRoot: settings.value.assetRoot,
-      assetExtensions: assetExtensions.value,
-      characterSpriteConfig: characterSpriteConfig.value,
-      defaultPose: settings.value.defaultPose,
-      defaultExpression: settings.value.defaultExpression,
-      globalPoseTokens: globalPoseTokens.value,
-    };
-
-    const initialState = getInitialState(history, buildOptions);
-
-    return buildFrames(parsedScript.value, {
-      ...buildOptions,
-      initialState,
-    });
+    return getInitialState(history, buildOptions.value);
   });
+
+  const frames = computed(() =>
+    buildFrames(parsedScript.value, {
+      ...buildOptions.value,
+      initialState: inheritedState.value,
+    }),
+  );
 
   const currentFrame = computed(() => frames.value[frameIndex.value] ?? null);
 
@@ -414,16 +416,19 @@ export function useRenpyPlayerController() {
   // ─── Actions (selection, transport) ───────────────────────────────────────
 
   function findLatestPlayableMessageId(): number | null {
-    for (let messageId = getLastMessageId(); messageId >= 0; messageId -= 1) {
-      const message = getChatMessages(messageId)[0];
+    const lastId = getLastMessageId();
+    if (lastId < 0) return null;
+    const allMessages = getChatMessages(`0-${lastId}`);
+    for (let i = allMessages.length - 1; i >= 0; i--) {
+      const message = allMessages[i];
       if (message && parseScriptFromMessage(message.message).commands.length > 0) {
-        return messageId;
+        return message.message_id;
       }
     }
     return null;
   }
 
-  function syncMessageSelection() {
+  function fullSync() {
     historyTrigger.value++;
     const messageId = settings.value.followLatestPlayable ? findLatestPlayableMessageId() : settings.value.preferredMessageId;
     settings.value.preferredMessageId = messageId;
@@ -431,16 +436,57 @@ export function useRenpyPlayerController() {
     currentMessage.value = messageId === null ? null : getChatMessages(messageId)[0] ?? null;
   }
 
+  function refreshCurrentMessageOnly() {
+    const id = currentMessage.value?.message_id;
+    if (id != null) {
+      currentMessage.value = getChatMessages(id)[0] ?? null;
+    }
+  }
+
+  function onMessageReceived(messageId: number) {
+    if (settings.value.followLatestPlayable) {
+      const message = getChatMessages(messageId)[0];
+      if (message && parseScriptFromMessage(message.message).commands.length > 0) {
+        settings.value.preferredMessageId = messageId;
+        manualMessageId.value = messageId;
+        currentMessage.value = message;
+        return;
+      }
+      return;
+    }
+
+    const preferred = settings.value.preferredMessageId;
+    if (preferred != null && messageId > preferred) {
+      return;
+    }
+
+    fullSync();
+  }
+
+  function onMessageChanged(messageId: number) {
+    const currentId = currentMessage.value?.message_id;
+
+    if (currentId === messageId) {
+      refreshCurrentMessageOnly();
+      return;
+    }
+
+    if (currentId != null && messageId < currentId) {
+      fullSync();
+      return;
+    }
+  }
+
   function useLatestPlayable() {
     settings.value.followLatestPlayable = true;
-    syncMessageSelection();
+    fullSync();
     frameIndex.value = 0;
   }
 
   function selectMessage(messageId: number) {
     settings.value.followLatestPlayable = false;
     settings.value.preferredMessageId = messageId;
-    syncMessageSelection();
+    fullSync();
     frameIndex.value = 0;
   }
 
@@ -557,16 +603,16 @@ export function useRenpyPlayerController() {
   onMounted(() => {
     setupReducedMotion();
 
-    syncMessageSelection();
+    fullSync();
 
     lifecycleStopList.push(
-      eventOn(tavern_events.CHAT_CHANGED, syncMessageSelection).stop,
-      eventOn(tavern_events.MESSAGE_RECEIVED, syncMessageSelection).stop,
-      eventOn(tavern_events.MESSAGE_EDITED, syncMessageSelection).stop,
-      eventOn(tavern_events.MESSAGE_UPDATED, syncMessageSelection).stop,
-      eventOn(tavern_events.MESSAGE_DELETED, syncMessageSelection).stop,
-      eventOn(tavern_events.MESSAGE_SWIPED, syncMessageSelection).stop,
-      eventOn(tavern_events.MORE_MESSAGES_LOADED, syncMessageSelection).stop,
+      eventOn(tavern_events.CHAT_CHANGED, fullSync).stop,
+      eventOn(tavern_events.MESSAGE_RECEIVED, onMessageReceived).stop,
+      eventOn(tavern_events.MESSAGE_EDITED, onMessageChanged).stop,
+      eventOn(tavern_events.MESSAGE_UPDATED, onMessageChanged).stop,
+      eventOn(tavern_events.MESSAGE_DELETED, fullSync).stop,
+      eventOn(tavern_events.MESSAGE_SWIPED, onMessageChanged).stop,
+      eventOn(tavern_events.MORE_MESSAGES_LOADED, fullSync).stop,
     );
   });
 
