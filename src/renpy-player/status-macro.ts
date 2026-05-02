@@ -68,11 +68,11 @@ function computePlayerStatusInner(): string {
   const upToId = isRegen ? lastId - 1 : lastId;
   if (upToId < 0) return '';
 
+  const allMessages = getChatMessages(`0-${upToId}`);
   const messagesBackwards: string[] = [];
-  for (let id = upToId; id >= 0; id--) {
-    const msg = getChatMessages(id)[0];
-    if (msg?.message) {
-      messagesBackwards.push(msg.message);
+  for (let i = allMessages.length - 1; i >= 0; i--) {
+    if (allMessages[i]?.message) {
+      messagesBackwards.push(allMessages[i].message);
     }
   }
 

@@ -76,6 +76,21 @@
         "**/jquery*.min.js",
         "**/node_modules/**"
       ],
+    },
+    {
+      "name": "Remote Debug Chrome (127.0.0.1:8001)",
+      "type": "chrome",
+      "request": "attach",
+      "port": 9222,
+      "url": "http://127.0.0.1:8001",
+      "sourceMapPathOverrides": {
+        "webpack://tavern_helper_template/*": "${workspaceFolder}/*"
+      },
+      "skipFiles": [
+        "**/jquery*.min.js",
+        "**/node_modules/**"
+      ],
+      "timeout": 100000
     }
   ]
 }

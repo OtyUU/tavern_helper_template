@@ -104,11 +104,11 @@ export function useRenpyPlayerController() {
 
     const history: string[] = [];
     const currentId = currentMessage.value?.message_id;
-    if (currentId != null && !Number.isNaN(currentId)) {
-      for (let id = currentId - 1; id >= 0; id -= 1) {
-        const msg = getChatMessages(id)[0];
-        if (msg && msg.message) {
-          history.push(msg.message);
+    if (currentId != null && !Number.isNaN(currentId) && currentId > 0) {
+      const allMessages = getChatMessages(`0-${currentId - 1}`);
+      for (let i = allMessages.length - 1; i >= 0; i--) {
+        if (allMessages[i]?.message) {
+          history.push(allMessages[i].message);
         }
       }
     }

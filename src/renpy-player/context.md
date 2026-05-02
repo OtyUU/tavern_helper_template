@@ -9,6 +9,69 @@ Agent-facing context for `src/renpy-player`.
 - Does not implement real Ren'Py execution, branching, variables, ATL, audio, menus, labels, jumps, save/load, or screen language.
 - If behavior is unclear, trust local source over upstream Ren'Py documentation.
 
+## Runtime Environment
+
+- **Module type**: This is a Tavern Helper **script** (only `index.ts`, no `index.html`). It does not render inside an iframe UI. Instead it mounts Vue components directly onto the SillyTavern host page using jQuery.
+- **jQuery scope**: In scripts, `$` operates on the host SillyTavern page (`window.$ = window.parent.$`), so `$('#chat')` selects the real chat element on the host page, not the iframe's DOM.
+- **Style teleportation**: Styles compiled inside the background iframe do not reach the host page. `teleportStyle()` is called once in `index.ts` to copy all compiled `<style>` elements into the host page's `<head>`. This is why the module uses unscoped SCSS with BEM-prefixed `renpy-player__` classes — **do not use tailwindcss** (class names would collide with SillyTavern's existing CSS).
+- **Lifecycle**:
+  - Init inside `$(() => { ... })` — never `DOMContentLoaded` (it does not fire for dynamically-loaded scripts).
+  - Cleanup via `$(window).on('pagehide', ...)` — not `'unload'`.
+  - The controller also uses Vue `onMounted`/`onScopeDispose` internally, which works because it is created inside `App.vue`'s `<script setup>`.
+
+## Build System & Auto-Imports
+
+### Auto-Imported (no import statement needed)
+
+- **Vue Composition API**: `ref`, `computed`, `watch`, `watchEffect`, `onMounted`, `onScopeDispose`, `onBeforeUnmount`, `createApp`, `createPinia`, `defineStore`, `storeToRefs`, `inject`, `provide`, `reactive`, `readonly`, and all other Vue exports.
+- **Zod**: `z` (the root zod namespace).
+- **klona**: `klona` (deep-clone utility for stripping Vue Proxy before persistence).
+- **VueUse**: functions from `@vueuse/core`, components and directives from `unplugin-vue-components`.
+
+### NOT Auto-Imported (require explicit import)
+
+- Local modules (`./parser`, `./types`, etc.)
+- Utility functions from `@util/script` (e.g., `createScriptIdDiv`, `teleportStyle`)
+- Vue components from other `.vue` files
+
+### Build Constraints
+
+- **Options API is disabled** (`__VUE_OPTIONS_API__ = false`). Always use Composition API with `<script setup lang="ts">`.
+- **Path alias**: `@util/` resolves to `util/` at the project root (e.g., `import { createScriptIdDiv } from '@util/script'`).
+
+## Tavern Helper Globals
+
+All Tavern Helper APIs are ambient globals — no import needed. They are typed in `@types/function/` and `@types/iframe/`.
+
+### APIs Used by This Module
+
+| Global | Purpose | Notes |
+|---|---|---|
+| `getChatMessages(id)` | Fetch chat messages by ID or range | Returns `ChatMessage[]` (array); `[0]` may be `undefined`. Accepts number, string range (`'0-5'`), or negative depth (`-1` = latest). |
+| `getLastMessageId()` | Highest message ID (0-based) in current chat | Returns `number` |
+| `getVariables({ type, script_id })` | Read script-scoped variables | Returns `Record<string, any>` |
+| `insertOrAssignVariables(obj, { type, script_id })` | Write/merge variables into script scope | Always wrap reactive values in `klona()` first |
+| `getScriptId()` | Unique ID string of this running script | Used for DOM scoping (`script_id` attr) and variable namespacing |
+| `eventOn(eventType, callback)` | Subscribe to an event | Returns `{ stop }` for manual cleanup. Auto-cleaned when iframe closes. |
+| `tavern_events` | Object mapping event names to string constants | Full catalog in `@types/iframe/event.d.ts` |
+| `registerMacroLike(regex, replacer)` | Register a prompt/display macro | Returns `{ unregister }`. Replacer receives `(context, substring, ...args)`. |
+
+### ChatMessage Shape
+
+The controller accesses `currentMessage.value?.message` and `currentMessage.value?.message_id`:
+
+```text
+ChatMessage {
+  message_id: number
+  name: string
+  role: 'system' | 'assistant' | 'user'
+  is_hidden: boolean
+  message: string
+  data: Record<string, any>
+  extra: Record<string, any>
+}
+```
+
 ## File Map
 
 ### Controller & State
@@ -40,24 +103,39 @@ Agent-facing context for `src/renpy-player`.
 - `index.ts`: mounts `App.vue` into `#th-renpy-player` and `SettingsPanel.vue` into `#extensions_settings2`. Imports `renpy-player.scss` once.
 - `context.md`: agent-facing source of truth; update when behavior changes
 
+## DOM Mounting
+
+- **`createScriptIdDiv()`** (from `@util/script`): creates `<div script_id="...">`. Tavern Helper uses `script_id` for scoped DOM management and auto-cleanup.
+- **Player host**: created with `attr('id', 'th-renpy-player')` and inserted before `$('#chat')`. Must be re-attached on `CHAT_CHANGED` and `MORE_MESSAGES_LOADED` because SillyTavern rebuilds the chat DOM on those events.
+- **Settings host**: appended to `#extensions_settings2` (SillyTavern's standard extension settings area).
+- **Shared Pinia**: a single `createPinia()` instance is created in `index.ts` and `.use()`'d on both `playerApp` and `settingsApp`, so they share the same store state.
+- **`teleportStyle()`**: clones all `<style>` from the iframe `<head>` into a `<div script_id="...">` appended to the host `<head>`. `destroy()` removes that div. Called once in `index.ts`.
+
 ## Integration
 
 - `index.ts` mounts:
   - `App.vue` into `#th-renpy-player`, inserted before `#chat`
   - `SettingsPanel.vue` into `#extensions_settings2`
-- Host-provided globals used by this module:
-  - `getChatMessages()`
-  - `getLastMessageId()`
-  - `getVariables()`
-  - `insertOrAssignVariables()`
-  - `getScriptId()`
-  - `eventOn()`
-  - `tavern_events`
-  - `registerMacroLike()`
 - `getChatMessages(id)[0]` is optional. Treat missing messages as normal when walking history or selecting a message id.
 - `index.ts` re-inserts the player host on `CHAT_CHANGED` and `MORE_MESSAGES_LOADED`, and unmounts both apps on `pagehide`.
 - `useRenpyPlayerController()` owns lifecycle internally: reduced-motion setup/cleanup, tavern event subscriptions + disposal, autoplay stop + reveal clear + transition cleanup. It uses `onMounted` + `onScopeDispose`.
 - The controller recomputes selection on chat-history events such as receive, edit, update, delete, swipe, and load.
+
+### Event Callback Signatures
+
+Events used by this module and what their callbacks receive:
+
+| Event | Callback signature |
+|---|---|
+| `CHAT_CHANGED` | `(chat_file_name: string) => void` |
+| `MESSAGE_RECEIVED` | `(message_id: number, type: string) => void` |
+| `MESSAGE_EDITED` | `(message_id: number) => void` |
+| `MESSAGE_UPDATED` | `(message_id: number) => void` |
+| `MESSAGE_DELETED` | `(message_id: number) => void` |
+| `MESSAGE_SWIPED` | `(message_id: number) => void` |
+| `MORE_MESSAGES_LOADED` | `() => void` |
+| `GENERATION_STARTED` | `(type: string) => void` — used in `status-macro.ts` to distinguish swipe/regenerate from normal generation |
+| `GENERATION_ENDED` | `(message_id: number) => void` — used in `status-macro.ts` |
 
 ## Script Grammar
 
@@ -247,9 +325,12 @@ Defaults:
 - `defaultPose = 'base'`
 - `defaultExpression = 'neutral'`
 - `globalPoseTokens = 'base,burst,lean,sit,stand'`
+- `spriteReferenceHeight = 2000`
 
 ### Presentation And Playback
 
+- Viewport:
+  - `stageHeight` (default 480, range 200–1200) — viewport height in px; width is derived as `stageHeight * 16 / 9`
 - Camera framing:
   - `defaultBackgroundScale`, `defaultSpriteScale`, `defaultSpriteY`
   - `mediumBackgroundScale`, `mediumSpriteScale`, `mediumSpriteY`
@@ -277,15 +358,20 @@ Defaults:
   - `speakerLeadInMs` (default 120) — pause after speaker intro before typing starts
   - `autoAdvanceDelayMs` (default 2500) — wait after reveal finishes before autoplay advances; replaces deprecated `autoPlayDelayMs`
 - Message selection and playback:
-  - `followLatestPlayable`
-  - `preferredMessageId`
+  - `followLatestPlayable` — when `true`, the controller auto-selects the latest message containing parseable commands; when `false`, uses `preferredMessageId`
+  - `preferredMessageId` — written by both the settings panel (user input) and the controller (auto-selection when `followLatestPlayable` is true)
   - `autoPlayDelayMs` — deprecated; kept in schema for backward compatibility but no longer read by the controller
 
 ### Persistence
 
 - Settings are stored in script variables under the current script id.
-- Invalid persisted values are repaired field-by-field using schema defaults.
+- Persistence pattern:
+  1. On store creation: `getVariables({ type: 'script', script_id })` → `SettingsSchema.parse()` for validation/repair → `ref()`
+  2. On every change: `watch({ deep: true })` → `klona(value)` → `insertOrAssignVariables()`
+- `klona()` is required to strip Vue's Proxy layer before writing to Tavern Helper APIs. Without it, Vue's reactive Proxy causes serialization issues.
+- Invalid persisted values are repaired field-by-field using schema defaults rather than rejected wholesale.
 - `preferredMessageId` accepts numeric input and normalizes empty/null to `null`.
+- Both Vue apps share a single Pinia instance (created in `index.ts`), so settings changes from `SettingsPanel.vue` are immediately visible in the player.
 
 ## Runtime Behavior
 
@@ -354,10 +440,24 @@ Defaults:
   - skips dialogue reveal if revealing (priority 2)
   - otherwise advances one frame
 
+## SillyTavern CSS Integration
+
+The SCSS reads SillyTavern host-page CSS custom properties for theme-aware styling. These are **not** defined by the renpy-player — they come from SillyTavern's theme engine and are available on the host page:
+
+- `--SmartThemeBorderColor` — theme border color
+- `--SmartThemeQuoteColor` — theme quote/accent color
+- `--black30a`, `--white30a` — semi-transparent black/white
+
+The stylesheet uses `color-mix(in srgb, ...)` to blend these with transparency. Internal CSS variables (`--renpy-*`, `--sprite-*`) are set by the controller via inline `stageStyle` and `spriteStyle` computeds, not in the SCSS.
+
 ## Sharp Edges
 
 - This is not a general Ren'Py parser. Keep assumptions narrow.
-- Vue/Pinia/Zod helpers such as `ref`, `computed`, `watch`, `onMounted`, `onBeforeUnmount`, `createApp`, `createPinia`, `defineStore`, `storeToRefs`, `z`, and `klona` are auto-imported by the webpack config. Tavern Helper APIs are host-page globals. Match the existing style unless the build config changes.
+- This is a **script** module (no `index.html`). Do not treat it as an iframe-rendered frontend UI project.
+- **Do not use tailwindcss** — it will collide with SillyTavern's class names on the host page. Use BEM-prefixed `renpy-player__` classes in unscoped SCSS.
+- Vue/Pinia/Zod helpers such as `ref`, `computed`, `watch`, `onMounted`, `onBeforeUnmount`, `createApp`, `createPinia`, `defineStore`, `storeToRefs`, `z`, and `klona` are auto-imported. Tavern Helper APIs are host-page globals. Match the existing style unless the build config changes.
+- `klona()` must wrap any reactive value before passing to `insertOrAssignVariables()` or other Tavern Helper APIs — Vue's Proxy layer causes serialization issues otherwise.
+- `ensurePlayerHost()` must be called on `CHAT_CHANGED` because SillyTavern rebuilds the chat DOM.
 - Only the first fenced code block gets special priority. Later fenced blocks are only considered when parsing falls back to the whole message.
 - `show` only treats `at ...` as valid when it is the trailing clause.
 - `in <outfit>` and `blush` are extracted before remaining tokens are interpreted as pose/expression.
