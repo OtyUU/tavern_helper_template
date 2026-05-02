@@ -38,7 +38,7 @@
           <div class="renpy-player-settings__field">
             <label>Stage height (px)</label>
             <input v-model.number="settings.stageHeight" class="text_pole" type="number" min="200" max="1200" step="10" />
-            <small>The VN viewport height. Bleed background shows when the panel is wider than height x 16/9.</small>
+            <small>The VN viewport height.</small>
           </div>
         </div>
 
@@ -226,7 +226,7 @@
         <div class="renpy-player-settings__section-header">
           <h4>Character layouts</h4>
           <p>
-            Configure per-character default outfit, normalization height, and pose tokens.
+            Configure per-character default outfits, normalization height, and pose tokens.
             Global defaults apply when a character is not in the config.
           </p>
         </div>

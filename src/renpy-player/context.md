@@ -13,7 +13,7 @@ Agent-facing context for `src/renpy-player`.
 
 ### Controller & State
 
-- `useRenpyPlayerController.ts`: orchestration composable — store wiring, message/frame selection, rendered sprite pipeline, stage geometry, lifecycle (`onMounted`/`onScopeDispose`), tavern event subscriptions, autoplay stop + transition cleanup. Exposes grouped API: `model`, `stage`, `scene`, `dialogue`, `transport`, `selection`, `autoplay`, `diagnostics`.
+- `useRenpyPlayerController.ts`: orchestration composable — store wiring, message/frame selection, rendered sprite pipeline, stage geometry, dialogue reveal wiring, lifecycle (`onMounted`/`onScopeDispose`), tavern event subscriptions, autoplay stop + reveal + transition cleanup. Exposes grouped API: `model`, `stage`, `scene`, `dialogue`, `transport`, `selection`, `autoplay`, `diagnostics`.
 - `player-context.ts`: `InjectionKey<RenpyPlayerController>` + `useRenpyPlayer()` inject helper. All extracted components inject the controller via this module.
 
 ### Vue Components
@@ -21,7 +21,7 @@ Agent-facing context for `src/renpy-player`.
 - `App.vue`: thin wrapper — creates controller, provides it, renders `<PlayerStage />`. No logic.
 - `PlayerStage.vue`: stage root — renders `<SceneLayer />` + `<ViewportOverlay />` inside the stage div with click handler.
 - `SceneLayer.vue`: scene rendering — background `SmartImage` (bound to `controller.scene.displayedBackground`, not `currentFrame.background`), scene fade div, gradient, sprite `TransitionGroup` with enter/leave hooks.
-- `ViewportOverlay.vue`: HUD overlay — empty state, dialogue bar (speaker + text), transport controls, autoplay button, message selection stepper, frame counter. Renders `<DiagnosticsPanel />`.
+- `ViewportOverlay.vue`: HUD overlay — empty state, dialogue bar (speaker + grapheme spans with per-char fade), transport controls, autoplay button, message selection stepper, frame counter. Renders `<DiagnosticsPanel />`.
 - `DiagnosticsPanel.vue`: diagnostics `<details>` UI — reads controller.diagnostics, controller.model, controller.scene.
 - `SmartImage.vue`: candidate waterfall loading, swap crossfade, `resolved` emit.
 - `SettingsPanel.vue`: settings UI only; keep behavior in `settings.ts` or `useRenpyPlayerController.ts`.
@@ -35,7 +35,7 @@ Agent-facing context for `src/renpy-player`.
 - `parser.ts`: grammar, token resolution, `StageState`, `buildFrames()`, `getInitialState()`
 - `types.ts`: shared command, asset, frame, and state contracts
 - `settings.ts`: Zod schema, saved-settings repair, character config parsing, Pinia store, persistence wiring
-- `player-composables.ts`: scene presentation (`useScenePresentation`), visibility transitions (`useSpriteVisibilityTransitions`), autoplay (`useAutoplay`), reduced-motion handling (`useReducedMotion`)
+- `player-composables.ts`: scene presentation (`useScenePresentation`), visibility transitions (`useSpriteVisibilityTransitions`), dialogue reveal (`useDialogueReveal`), autoplay (`useAutoplay`), reduced-motion handling (`useReducedMotion`)
 - `status-macro.ts`: `{{vn_state}}` macro that formats `InitialPlayerState` as Ren'Py-style text for prompt injection
 - `index.ts`: mounts `App.vue` into `#th-renpy-player` and `SettingsPanel.vue` into `#extensions_settings2`. Imports `renpy-player.scss` once.
 - `context.md`: agent-facing source of truth; update when behavior changes
@@ -56,7 +56,7 @@ Agent-facing context for `src/renpy-player`.
   - `registerMacroLike()`
 - `getChatMessages(id)[0]` is optional. Treat missing messages as normal when walking history or selecting a message id.
 - `index.ts` re-inserts the player host on `CHAT_CHANGED` and `MORE_MESSAGES_LOADED`, and unmounts both apps on `pagehide`.
-- `useRenpyPlayerController()` owns lifecycle internally: reduced-motion setup/cleanup, tavern event subscriptions + disposal, autoplay stop + transition cleanup. It uses `onMounted` + `onScopeDispose`.
+- `useRenpyPlayerController()` owns lifecycle internally: reduced-motion setup/cleanup, tavern event subscriptions + disposal, autoplay stop + reveal clear + transition cleanup. It uses `onMounted` + `onScopeDispose`.
 - The controller recomputes selection on chat-history events such as receive, edit, update, delete, swipe, and load.
 
 ## Script Grammar
@@ -268,10 +268,18 @@ Defaults:
   - `spriteEnterMs`
   - `spriteExitMs`
   - `spriteVisibilityEffect`
+- Dialogue reveal:
+  - `textSpeedMs` (default 30) — delay between each grapheme; 0 = instant
+  - `textFadeMs` (default 120) — per-character opacity transition duration
+  - `sentencePauseMs` (default 400) — extra delay after sentence-ending punctuation
+  - `commaPauseMs` (default 150) — extra delay after clause/comma punctuation
+  - `speakerFadeMs` (default 250) — speaker name opacity transition on speaker change
+  - `speakerLeadInMs` (default 120) — pause after speaker intro before typing starts
+  - `autoAdvanceDelayMs` (default 2500) — wait after reveal finishes before autoplay advances; replaces deprecated `autoPlayDelayMs`
 - Message selection and playback:
   - `followLatestPlayable`
   - `preferredMessageId`
-  - `autoPlayDelayMs`
+  - `autoPlayDelayMs` — deprecated; kept in schema for backward compatibility but no longer read by the controller
 
 ### Persistence
 
@@ -283,7 +291,7 @@ Defaults:
 
 - Effects disabled (`effectsDisabled`):
   - `effectsDisabled = prefersReducedMotion || motionMode === 'instant'`
-  - When true, all transition durations are zeroed: camera, scene fade, sprite enter/exit, and sprite swap.
+  - When true, all transition durations are zeroed: camera, scene fade, sprite enter/exit, sprite swap, and dialogue reveal (instant full text + no per-char fade).
   - `motionMode` is set to `'instant'` by `applyManualMessageId()` (manual message jumps) and by `setMotionModeForNav()` when navigating to an earlier frame index (step backward, jump to start).
   - `motionMode` resets to `'normal'` when navigating forward.
 
@@ -313,14 +321,37 @@ Defaults:
   - natural height is recorded the first time `onSpriteResolved` fires for a given sprite id; subsequent resolves for the same id are ignored
   - normalization scale = `referenceHeight / naturalHeight`
 
+- Dialogue reveal (`useDialogueReveal`):
+  - Exposes: `graphemes`, `revealedCharCount`, `speakerRevealed`, `isRevealing`, `isFullyRevealed`, `skipReveal()`, `clearReveal()`
+  - Text is split into graphemes using `Intl.Segmenter` (with `Array.from` fallback)
+  - Typewriter reveal: each grapheme becomes visible after `textSpeedMs` + optional punctuation pause
+  - Punctuation sets:
+    - sentence enders: `. ! ? … 。 ！ ？` → `sentencePauseMs` delay
+    - clause marks: `, ; : 、 ； ： —` → `commaPauseMs` delay
+  - Speaker intro: when the speaker changes relative to the previous frame (and is non-empty), the speaker name fades in over `speakerFadeMs`, then waits `speakerLeadInMs` before typing starts
+  - Speaker intro is skipped when speaker is empty or unchanged
+  - Fade tail: after the last grapheme becomes visible, waits `textFadeMs` before setting `isFullyRevealed = true`
+  - `isFullyRevealed` includes the fade tail; autoplay gates on this value
+  - Textless frames (no text or empty string) are immediately "fully revealed" to prevent autoplay deadlocks
+  - Timer cancellation uses a generation counter (`revealGeneration`); every scheduled callback checks its captured generation before mutating state
+  - `skipReveal()` reveals all graphemes and speaker instantly, still schedules fade tail
+  - `clearReveal()` resets everything and increments generation (called on backward nav, unmount, and `cancelAllEffects()`)
+  - Watch on `effectsDisabled` defensively completes any in-progress reveal when it becomes `true`
+  - CSS variables `--renpy-text-fade-ms` and `--renpy-speaker-fade-ms` control per-char and speaker opacity transitions in the stylesheet; zeroed when `effectsDisabled`
+  - `ViewportOverlay.vue` renders text as individual `<span>` elements keyed by index with `renpy-player__char--visible`/`--hidden` classes; speaker uses `renpy-player__speaker--visible`/`--hidden`
+  - Controller exposes `dialogue.graphemes`, `dialogue.revealedCharCount`, `dialogue.speakerRevealed`, `dialogue.isRevealing` in the public API
+
 - Autoplay:
-  - advances on an interval using `autoPlayDelayMs`
+  - gate-based scheduling using `canAutoAdvanceNow` (requires `isFullyRevealed`, `!isSceneTransitioning`, not on last frame)
+  - when the gate opens, schedules a single timeout for `autoAdvanceDelayMs` to call `stepForward()`
+  - cancels pending timeout if the gate closes (e.g. scene transition starts or reveal restarts)
   - stops at the last frame
-  - does not advance while a scene transition is active
+  - total time per frame = typing time + punctuation pauses + fade tail + `autoAdvanceDelayMs`
 
 - Stage click:
   - does nothing if `!hasFrames` or `isSceneTransitioning`
-  - pauses autoplay if active
+  - stops autoplay if active (priority 1)
+  - skips dialogue reveal if revealing (priority 2)
   - otherwise advances one frame
 
 ## Sharp Edges
@@ -351,11 +382,12 @@ Update these files together when behavior changes:
 - `player-composables.ts`
   - scene transition timing in `useScenePresentation()`
   - visibility effects in `useSpriteVisibilityTransitions()`
-  - autoplay in `useAutoplay()`
+  - dialogue reveal in `useDialogueReveal()`
+  - autoplay in `useAutoplay()` (gate-based, reveal-aware)
 - `SceneLayer.vue`
   - scene rendering template (background, fade, sprites, transitions)
 - `ViewportOverlay.vue`
-  - HUD template (dialogue bar, transport controls, message stepper, frame counter)
+  - HUD template (grapheme-span dialogue bar, speaker reveal, transport controls, message stepper, frame counter)
 - `DiagnosticsPanel.vue`
   - diagnostics UI template
 - `SmartImage.vue`
@@ -364,6 +396,8 @@ Update these files together when behavior changes:
   - macro registration, output format, offstage filtering
 - `renpy-player.scss`
   - all player styles; no `:deep()` — use descendant selectors
+  - `renpy-player__char--visible`/`--hidden` (per-char opacity via `--renpy-text-fade-ms`)
+  - `renpy-player__speaker--visible`/`--hidden` (speaker opacity via `--renpy-speaker-fade-ms`)
 - `player-context.ts`
   - only when the controller type or injection mechanism changes
 
