@@ -11,7 +11,7 @@
 
 /* ????????? Container ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????? */
 .renpy-player {
-  margin-bottom: 1rem;
+  margin-bottom: 0rem;
   border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 65%, transparent);
   border-radius: 18px;
   overflow: hidden;
@@ -21,6 +21,7 @@
   backdrop-filter: blur(18px);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.32);
 }
+
 /* ????????? Stage wrapper: fills panel, clips to stageHeight, shows black bars ?????? */
 .renpy-player__stage-wrap {
   position: relative;
@@ -32,12 +33,14 @@
   align-items: center;
   justify-content: center;
 }
+
 /* ????????? Fixed 16:9 VN viewport ????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????? */
 .renpy-player__stage {
   position: relative;
   overflow: hidden;
   flex-shrink: 0;
 }
+
 .renpy-player__scene-layer,
 .renpy-player__background,
 .renpy-player__gradient,
@@ -46,26 +49,32 @@
   position: absolute;
   inset: 0;
 }
+
 .renpy-player__scene-layer {
   z-index: 1;
 }
+
 .renpy-player__background {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
+
 .renpy-player__viewport {
   z-index: 50;
   pointer-events: none;
 }
+
 .renpy-player__sprite-layer {
   z-index: 1;
 }
+
 .renpy-player__gradient {
   background:
     linear-gradient(180deg, rgba(0, 0, 0, 0.04) 0%, rgba(0, 0, 0, 0.38) 55%, rgba(0, 0, 0, 0.86) 100%),
     radial-gradient(circle at top, rgba(255, 255, 255, 0.10), transparent 50%);
 }
+
 .renpy-player__sprite-shell {
   inset: auto auto 0 0;
   position: absolute;
@@ -80,6 +89,7 @@
   --sprite-ref-height: 2000px;
   --sprite-normalize-scale: 1;
 }
+
 .renpy-player__sprite {
   display: block;
   height: 100%;
@@ -87,8 +97,7 @@
   --sprite-scale: 1;
   --sprite-y: 0%;
   transform:
-    translateY(var(--sprite-y))
-    scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)));
+    translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)));
   transform-origin: center bottom;
   transition: transform var(--renpy-camera-transition-ms) ease;
 }
@@ -114,26 +123,63 @@
   left: 0;
   bottom: 0;
 }
+
 @keyframes renpy-shake {
-  0%, 100% { transform: translateX(0) translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
-  20% { transform: translateX(-6px) translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
-  40% { transform: translateX(6px) translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
-  60% { transform: translateX(-4px) translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
-  80% { transform: translateX(4px) translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
+
+  0%,
+  100% {
+    transform: translateX(0) translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)));
+  }
+
+  20% {
+    transform: translateX(-6px) translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)));
+  }
+
+  40% {
+    transform: translateX(6px) translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)));
+  }
+
+  60% {
+    transform: translateX(-4px) translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)));
+  }
+
+  80% {
+    transform: translateX(4px) translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)));
+  }
 }
+
 .renpy-player__sprite--shake {
   animation: renpy-shake 0.45s ease-in-out 1;
 }
+
 @keyframes renpy-scene-shake {
-  0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-8px); }
-  40% { transform: translateX(8px); }
-  60% { transform: translateX(-5px); }
-  80% { transform: translateX(5px); }
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  20% {
+    transform: translateX(-8px);
+  }
+
+  40% {
+    transform: translateX(8px);
+  }
+
+  60% {
+    transform: translateX(-5px);
+  }
+
+  80% {
+    transform: translateX(5px);
+  }
 }
+
 .renpy-player__scene-layer--shake {
   animation: renpy-scene-shake 0.45s ease-in-out 1;
 }
+
 .renpy-player__scene-fade {
   position: absolute;
   inset: 0;
@@ -142,33 +188,68 @@
   pointer-events: none;
   animation: renpy-scene-fade ease-in-out;
 }
+
 @keyframes renpy-scene-fade {
-  0% { opacity: 0; }
-  50% { opacity: 1; }
-  100% { opacity: 0; }
+  0% {
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
 }
+
 @keyframes renpy-bounce {
-  0%, 100% { transform: translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
-  30% { transform: translateY(calc(var(--sprite-y) - 20px)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
-  55% { transform: translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
-  75% { transform: translateY(calc(var(--sprite-y) - 8px)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
+
+  0%,
+  100% {
+    transform: translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)));
+  }
+
+  30% {
+    transform: translateY(calc(var(--sprite-y) - 20px)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)));
+  }
+
+  55% {
+    transform: translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)));
+  }
+
+  75% {
+    transform: translateY(calc(var(--sprite-y) - 8px)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)));
+  }
 }
+
 .renpy-player__sprite--bounce {
   animation: renpy-bounce 0.4s ease-out 1;
 }
+
 @keyframes renpy-pulse {
-  0%, 100% { transform: translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale))); }
-  50% { transform: translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale) * 1.06)); }
+
+  0%,
+  100% {
+    transform: translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)));
+  }
+
+  50% {
+    transform: translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale) * 1.06));
+  }
 }
+
 .renpy-player__sprite--pulse {
   animation: renpy-pulse 0.4s ease-in-out 1;
 }
+
 /* ????????? Dialogue/HUD overlay ??????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????? */
 .renpy-player__dialogue-bar,
 .renpy-player__hud-rail,
 .renpy-player__diagnostics {
   pointer-events: auto;
 }
+
 .renpy-player__hud-shell {
   position: absolute;
   inset: auto 0 -1px;
@@ -178,28 +259,23 @@
   align-items: stretch;
   padding: 0 var(--renpy-shell-pad-x) var(--renpy-shell-pad-bottom);
   pointer-events: none;
-  background: linear-gradient(
-    to bottom, 
-    rgba(0, 0, 0, 0) 0%, 
-    rgba(0, 0, 0, 0.4) 30%, 
-    rgba(0, 0, 0, 0.75) 100%
-  );
+  background: linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0.4) 30%,
+      rgba(0, 0, 0, 0.75) 100%);
   border-top: 1px solid rgba(255, 255, 255, 0.6);
-  -webkit-mask-image: linear-gradient(
-    to right, 
-    transparent 0%, 
-    black 10%, 
-    black 90%, 
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to right, 
-    transparent 0%, 
-    black 10%, 
-    black 90%, 
-    transparent 100%
-  );
+  -webkit-mask-image: linear-gradient(to right,
+      transparent 0%,
+      black 10%,
+      black 90%,
+      transparent 100%);
+  mask-image: linear-gradient(to right,
+      transparent 0%,
+      black 10%,
+      black 90%,
+      transparent 100%);
 }
+
 .renpy-player__dialogue-bar {
   grid-area: 1 / 1 / 2 / 2;
   display: grid;
@@ -208,11 +284,10 @@
   align-items: start;
   min-height: var(--renpy-dialogue-min-height);
   padding:
-    var(--renpy-dialogue-pad-top)
-    var(--renpy-dialogue-pad-x)
-    var(--renpy-dialogue-pad-bottom);
+    var(--renpy-dialogue-pad-top) var(--renpy-dialogue-pad-x) var(--renpy-dialogue-pad-bottom);
   font-family: 'RenpyRounded', 'Hiragino Maru Gothic ProN', 'Yu Gothic UI', 'Meiryo', sans-serif;
 }
+
 .renpy-player__speaker {
   align-self: start;
   justify-self: center;
@@ -221,20 +296,23 @@
   font-weight: 600;
   letter-spacing: 0.05em;
   line-height: 1.2;
-  text-shadow: 
-    -1px -1px 0 rgba(0, 0, 0, 0.8),  
-     1px -1px 0 rgba(0, 0, 0, 0.8),
-    -1px  1px 0 rgba(0, 0, 0, 0.8),
-     1px  1px 0 rgba(0, 0, 0, 0.8),
-     0px  3px 4px rgba(0, 0, 0, 0.6);
+  text-shadow:
+    -1px -1px 0 rgba(0, 0, 0, 0.8),
+    1px -1px 0 rgba(0, 0, 0, 0.8),
+    -1px 1px 0 rgba(0, 0, 0, 0.8),
+    1px 1px 0 rgba(0, 0, 0, 0.8),
+    0px 3px 4px rgba(0, 0, 0, 0.6);
   transition: opacity var(--renpy-speaker-fade-ms) ease;
 }
+
 .renpy-player__speaker--visible {
   opacity: 1;
 }
+
 .renpy-player__speaker--hidden {
   opacity: 0;
 }
+
 .renpy-player__text {
   color: #fff;
   align-self: start;
@@ -243,19 +321,23 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   padding-right: calc(var(--renpy-rail-width) * 0.8);
-  text-shadow: 
+  text-shadow:
     1px 1px 2px rgba(0, 0, 0, 0.9),
     0px 2px 4px rgba(0, 0, 0, 0.6);
 }
+
 .renpy-player__char {
   transition: opacity var(--renpy-text-fade-ms) ease;
 }
+
 .renpy-player__char--visible {
   opacity: 1;
 }
+
 .renpy-player__char--hidden {
   opacity: 0;
 }
+
 .renpy-player__empty-state {
   position: absolute;
   inset: 0;
@@ -266,6 +348,7 @@
   text-align: center;
   opacity: 0.7;
 }
+
 .renpy-player__empty-state p {
   margin: 0;
   max-width: 42rem;
@@ -283,23 +366,23 @@
   width: var(--renpy-rail-width);
   transform: translateX(calc(var(--renpy-dialogue-pad-x) * 0.42));
   padding:
-    var(--renpy-control-row-pad-y)
-    var(--renpy-dialogue-pad-x)
-    var(--renpy-control-row-pad-y)
-    0;
+    var(--renpy-control-row-pad-y) var(--renpy-dialogue-pad-x) var(--renpy-control-row-pad-y) 0;
   pointer-events: auto;
 }
+
 .renpy-player__rail-row {
   display: flex;
   justify-content: flex-end;
   gap: var(--renpy-control-gap);
   padding: 0 var(--renpy-control-row-pad-x);
 }
+
 .renpy-player__rail-divider {
   height: 1px;
   margin: 6px var(--renpy-control-row-pad-x) 7px;
   background: rgba(255, 255, 255, 0.08);
 }
+
 .renpy-player__hud-button {
   display: flex;
   align-items: center;
@@ -315,39 +398,47 @@
   cursor: pointer;
   transition: color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
+
 .renpy-player__hud-button svg {
   flex-shrink: 0;
   width: var(--renpy-control-icon);
   height: var(--renpy-control-icon);
 }
+
 .renpy-player__hud-button:hover:not(:disabled) {
   color: #fff;
   background: rgba(255, 255, 255, 0.08);
 }
+
 .renpy-player__hud-button:disabled {
   color: rgba(255, 255, 255, 0.22);
   cursor: default;
 }
+
 .renpy-player__hud-button--active {
   color: #aae4ff;
   background: rgba(170, 228, 255, 0.1);
   box-shadow: inset 0 0 0 1px rgba(170, 228, 255, 0.16);
 }
+
 .renpy-player__rail-bottom,
- .renpy-player__stepper {
+.renpy-player__stepper {
   display: flex;
   align-items: center;
 }
+
 .renpy-player__rail-bottom {
   justify-content: flex-end;
   gap: 10px;
   padding: 0 var(--renpy-control-row-pad-x);
 }
+
 .renpy-player__stepper {
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
+
 .renpy-player__stepper-button {
   display: flex;
   flex: 0 0 auto;
@@ -363,14 +454,17 @@
   cursor: pointer;
   transition: color 0.12s ease, background-color 0.12s ease;
 }
+
 .renpy-player__stepper-button:hover:not(:disabled) {
   color: rgba(255, 255, 255, 0.9);
   background: rgba(255, 255, 255, 0.1);
 }
+
 .renpy-player__stepper-button:disabled {
   color: rgba(255, 255, 255, 0.2);
   cursor: default;
 }
+
 .renpy-player__msg-input {
   flex: 0 0 auto;
   appearance: textfield;
@@ -387,15 +481,18 @@
   text-align: center;
   cursor: text;
 }
+
 .renpy-player__msg-input:focus {
   color: #fff;
 }
+
 .renpy-player__msg-input::-webkit-inner-spin-button,
 .renpy-player__msg-input::-webkit-outer-spin-button {
   -webkit-appearance: none;
   display: none;
   margin: 0;
 }
+
 .renpy-player__frame-count {
   display: inline-flex;
   align-items: baseline;
@@ -406,10 +503,12 @@
   min-width: 0;
   text-align: right;
 }
+
 .renpy-player__frame-count strong {
   color: rgba(255, 255, 255, 0.74);
   font-weight: 500;
 }
+
 /* ????????? Diagnostics ??????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????? */
 .renpy-player__diagnostics {
   position: absolute;
@@ -420,6 +519,7 @@
   max-width: min(33rem, calc(100% - 1.5rem));
   color: #fff;
 }
+
 .renpy-player__diagnostics summary {
   display: inline-flex;
   align-items: center;
@@ -435,18 +535,22 @@
   list-style: none;
   transition: color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
+
 .renpy-player__diagnostics summary:hover {
   color: #fff;
   background: rgba(255, 255, 255, 0.08);
 }
+
 .renpy-player__diagnostics summary svg {
   flex-shrink: 0;
   width: var(--renpy-control-icon);
   height: var(--renpy-control-icon);
 }
+
 .renpy-player__diagnostics summary::-webkit-details-marker {
   display: none;
 }
+
 .renpy-player__diagnostics-grid {
   display: grid;
   gap: 0.4rem;
@@ -456,31 +560,37 @@
   background: rgba(6, 9, 16, 0.78);
   backdrop-filter: blur(10px);
 }
+
 .renpy-player__diagnostics-grid p {
   margin: 0;
   overflow-wrap: anywhere;
 }
+
 /* ????????? Responsive ?????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????? */
 @media (max-width: 900px) {
   .renpy-player__dialogue-bar {
     grid-template-columns: 1fr;
     gap: 4px;
   }
+
   .renpy-player__hud-rail {
     min-width: min(100%, 232px);
     width: min(100%, 232px);
   }
 }
+
 @media (max-width: 640px) {
   .renpy-player__hud-shell {
     display: flex;
     flex-direction: column;
     padding: var(--renpy-dialogue-pad-top) var(--renpy-dialogue-pad-x);
   }
+
   .renpy-player__dialogue-bar,
   .renpy-player__hud-rail {
     padding: 0;
   }
+
   .renpy-player__hud-rail {
     width: 100%;
     min-width: 0;
@@ -489,9 +599,11 @@
     transform: none;
     margin-top: 12px;
   }
+
   .renpy-player__rail-row {
     justify-content: center;
   }
+
   .renpy-player__rail-bottom {
     justify-content: flex-end;
   }
