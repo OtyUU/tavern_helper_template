@@ -73,6 +73,69 @@ function unquote(value: string): string {
   return body.replace(/\\(["'])/g, '$1').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
 }
 
+/**
+ * Strip trailing inline comments from a single line.
+ *
+ * Supported:
+ *   - `# comment`
+ *   - `// comment` (only when `//` is at start-of-line or preceded by whitespace)
+ *
+ * Important:
+ *   - Comment markers inside single/double quotes are ignored.
+ *   - `show chinami//comment` should NOT be treated as a comment (per requirement).
+ */
+function stripInlineComment(input: string): string {
+  let inSingle = false;
+  let inDouble = false;
+  let escaped = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    // Only treat backslash as an escape when inside quotes.
+    if ((inSingle || inDouble) && ch === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    // Toggle quote state (but don't let one quote type toggle the other).
+    if (!inSingle && ch === '"') {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (!inDouble && ch === "'") {
+      inSingle = !inSingle;
+      continue;
+    }
+
+    if (inSingle || inDouble) {
+      continue;
+    }
+
+    // Outside quotes: `# ...` always starts an inline comment.
+    if (ch === '#') {
+      return input.slice(0, i);
+    }
+
+    // Outside quotes: `// ...` starts an inline comment only at start-of-line
+    // or when preceded by whitespace (so `chinami//comment` is NOT a comment,
+    // and `http://...` is not truncated).
+    if (ch === '/' && input[i + 1] === '/') {
+      const prev = i === 0 ? '' : input[i - 1] ?? '';
+      if (i === 0 || /\s/.test(prev)) {
+        return input.slice(0, i);
+      }
+    }
+  }
+
+  return input;
+}
+
 function getSpeakerLabel(speaker: string): string {
   const raw = speaker.trim();
   if (raw.toLowerCase() === 'narrator') return '';
@@ -178,9 +241,16 @@ function parseLines(source: string): ParsedLines {
 
   source
     .split(/\r?\n/g)
-    .map(line => line.trim())
-    .forEach(line => {
-      if (!line || line.startsWith('#') || line.startsWith('//')) return;
+    .forEach(rawLine => {
+      const original = rawLine.trim();
+      if (!original) return;
+
+      // Fast-path full-line comments (keep behavior identical to before).
+      if (original.startsWith('#') || original.startsWith('//')) return;
+
+      // Strip trailing inline comments, but only when the marker is outside quotes.
+      const line = stripInlineComment(original).trim();
+      if (!line) return;
 
       // scene <background> [<segment>]
       const sceneMatch = line.match(/^scene\s+([A-Za-z0-9_-]+)(?:\s+([A-Za-z0-9_-]+))?$/i);
@@ -219,7 +289,7 @@ function parseLines(source: string): ParsedLines {
       if (cameraMatch) {
         const transforms = splitTransforms(cameraMatch[1]);
         if (transforms.length === 0 || !hasOnlyAllowedTransforms(transforms, CAMERA_COMMAND_TRANSFORMS)) {
-          ignoredLines.push(line);
+          ignoredLines.push(original);
           return;
         }
 
@@ -238,7 +308,7 @@ function parseLines(source: string): ParsedLines {
         const character = showMatch[1];
         const parsed = parseShowTail((showMatch[2] ?? '').trim(), SHOW_TRANSFORMS);
         if (parsed === null) {
-          ignoredLines.push(line);
+          ignoredLines.push(original);
           return;
         }
 
@@ -262,7 +332,7 @@ function parseLines(source: string): ParsedLines {
         const parsed = parseShowTail(attrsRest, SHOW_TRANSFORMS);
 
         if (parsed === null) {
-          ignoredLines.push(line);
+          ignoredLines.push(original);
           return;
         }
 
@@ -305,7 +375,7 @@ function parseLines(source: string): ParsedLines {
         return;
       }
 
-      ignoredLines.push(line);
+      ignoredLines.push(original);
     });
 
   return { commands, ignoredLines };
