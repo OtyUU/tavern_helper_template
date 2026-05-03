@@ -40,6 +40,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   resolved: [payload: SmartImageResolvedPayload];
+  resolutionStatus: [status: { resolved: string | null; failed: string[] }];
 }>();
 
 const currentSrc = ref('');
@@ -47,6 +48,7 @@ const previousSrc = ref('');
 const isSwapping = ref(false);
 const loadGeneration = ref(0);
 const swapResetHandle = ref<number | null>(null);
+const failedCandidates = ref<string[]>([]);
 
 const smartImageStyle = computed(() => ({
   '--smart-image-swap-ms': `${Math.max(props.swapDurationMs, 0)}ms`,
@@ -62,12 +64,14 @@ watch(
 
 async function syncCurrentSrc(candidates: string[], blockedSrc?: string) {
   const generation = ++loadGeneration.value;
+  failedCandidates.value = [];
   const nextSrc = await resolveFirstCandidate(candidates, generation, blockedSrc);
   if (generation !== loadGeneration.value) {
     return;
   }
 
   if (!nextSrc) {
+    emit('resolutionStatus', { resolved: null, failed: [...failedCandidates.value] });
     currentSrc.value = '';
     previousSrc.value = '';
     isSwapping.value = false;
@@ -75,6 +79,7 @@ async function syncCurrentSrc(candidates: string[], blockedSrc?: string) {
     return;
   }
 
+  emit('resolutionStatus', { resolved: nextSrc.src, failed: [...failedCandidates.value] });
   if (nextSrc.src === currentSrc.value) {
     return;
   }
@@ -101,7 +106,7 @@ async function resolveFirstCandidate(candidates: string[], generation: number, b
       return metadata;
     }
 
-    console.warn(`[RenPy Player] SmartImage failed candidate: ${candidate}`);
+    failedCandidates.value.push(candidate);
   }
 
   console.warn('[RenPy Player] SmartImage exhausted all candidates.');
@@ -132,7 +137,8 @@ function preloadCandidate(src: string) {
 
 function handleDisplayError() {
   console.warn(`[RenPy Player] SmartImage display failed: ${currentSrc.value}`);
-  void syncCurrentSrc(props.candidates, currentSrc.value);
+  const failed = currentSrc.value;
+  void syncCurrentSrc(props.candidates, failed);
 }
 
 function scheduleSwapCleanup() {

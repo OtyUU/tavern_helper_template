@@ -13,16 +13,33 @@
           <li>Reference height: {{ controller.diagnostics.getSpriteReferenceHeight(sprite.id) }}px</li>
           <li>Natural height (resolved): {{ controller.diagnostics.getSpriteNaturalHeight(sprite) }}px</li>
           <li>Normalization scale: {{ controller.diagnostics.getSpriteNormalizationScale(sprite).toFixed(4) }}</li>
-          <li v-if="sprite.asset?.candidates?.length">Candidates:</li>
-          <li v-for="c in sprite.asset?.candidates" :key="c" style="padding-left:1rem;">{{ c }}</li>
-          <li v-if="!sprite.asset?.candidates?.length">No asset candidates</li>
+          <template v-if="!sprite.asset?.candidates?.length">
+            <li>No asset candidates</li>
+          </template>
+          <template v-else-if="spriteStatus(sprite.id)">
+            <li v-if="spriteStatus(sprite.id)!.resolved" style="color:#8f8;">&#10003; {{ spriteStatus(sprite.id)!.resolved }}</li>
+            <li v-else style="color:#f88;">Not resolved</li>
+            <li v-for="f in spriteStatus(sprite.id)!.failed" :key="f" style="padding-left:1rem;color:#f88;">&#10007; {{ f }}</li>
+          </template>
+          <template v-else>
+            <li style="color:#888;">Resolving&hellip;</li>
+          </template>
         </ul>
       </template>
       <p v-if="!controller.model.currentFrame?.sprites?.length"><strong>Sprites:</strong> None</p>
-      <p><strong>Background candidates:</strong></p>
+      <p><strong>Background:</strong></p>
       <ul style="margin:0; padding-left:1rem; font-size:0.75rem;">
-        <li v-for="c in controller.model.currentFrame?.background?.candidates" :key="c">{{ c }}</li>
-        <li v-if="!controller.model.currentFrame?.background?.candidates?.length">None</li>
+        <template v-if="!controller.model.currentFrame?.background?.candidates?.length">
+          <li>None</li>
+        </template>
+        <template v-else-if="bgStatus">
+          <li v-if="bgStatus.resolved" style="color:#8f8;">&#10003; {{ bgStatus.resolved }}</li>
+          <li v-else style="color:#f88;">Not resolved</li>
+          <li v-for="f in bgStatus.failed" :key="f" style="padding-left:1rem;color:#f88;">&#10007; {{ f }}</li>
+        </template>
+        <template v-else>
+          <li style="color:#888;">Resolving&hellip;</li>
+        </template>
       </ul>
       <p v-if="controller.diagnostics.characterSpriteConfigError"><strong>Character config JSON:</strong> {{ controller.diagnostics.characterSpriteConfigError }}</p>
     </div>
@@ -30,7 +47,14 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useRenpyPlayer } from './player-context';
 
 const controller = useRenpyPlayer();
+
+const bgStatus = computed(() => controller.diagnostics.assetResolutionStatus['__background__']);
+
+function spriteStatus(id: string) {
+  return controller.diagnostics.assetResolutionStatus[id];
+}
 </script>

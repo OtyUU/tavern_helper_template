@@ -84,6 +84,7 @@ export function useRenpyPlayerController() {
 
   const maxMessageId = computed(() => getLastMessageId());
   const characterNaturalHeights = ref<Record<string, number>>({});
+  const assetResolutionStatus = ref<Record<string, { resolved?: string; failed: string[] }>>({});
 
   const characterNormalizationScales = computed(() => {
     const scales: Record<string, number> = {};
@@ -324,6 +325,16 @@ export function useRenpyPlayerController() {
     if (characterNaturalHeights.value[spriteId] === undefined) {
       characterNaturalHeights.value[spriteId] = payload.naturalHeight;
     }
+  }
+
+  function onAssetResolutionStatus(
+    key: string,
+    status: { resolved?: string | null; failed: string[] },
+  ) {
+    assetResolutionStatus.value[key] = {
+      resolved: status.resolved ?? undefined,
+      failed: status.failed,
+    };
   }
 
   function getSpriteAnchorX(position: 'left' | 'center' | 'right'): number {
@@ -699,6 +710,8 @@ export function useRenpyPlayerController() {
       getSpriteReferenceHeight,
       getSpriteNaturalHeight,
       getSpriteNormalizationScale,
+      assetResolutionStatus,
+      onAssetResolutionStatus,
     },
   });
 }

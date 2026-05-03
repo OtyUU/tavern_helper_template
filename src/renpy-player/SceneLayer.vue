@@ -11,6 +11,7 @@
       :style="controller.scene.backgroundStyle"
       :candidates="controller.scene.displayedBackground.candidates"
       :alt="controller.scene.displayedBackground.description"
+      @resolution-status="controller.diagnostics.onAssetResolutionStatus('__background__', $event)"
     />
     <div class="renpy-player__gradient"></div>
     <TransitionGroup
@@ -35,6 +36,7 @@
           :alt="sprite.asset?.description ?? sprite.id"
           :swap-duration-ms="sprite.swapDurationMs"
           @resolved="controller.scene.onSpriteResolved(sprite.id, $event)"
+          @resolution-status="controller.diagnostics.onAssetResolutionStatus(sprite.id, $event)"
         />
       </div>
     </TransitionGroup>
