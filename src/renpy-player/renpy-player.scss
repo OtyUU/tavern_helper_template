@@ -179,9 +179,27 @@
   gap: var(--renpy-shell-gap);
   padding: 0 var(--renpy-shell-pad-x) var(--renpy-shell-pad-bottom);
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(7, 15, 30, 0) 0%, rgba(7, 15, 30, 0.4) 25%, rgba(7, 15, 30, 0.8) 100%);
-  border-top: 1px solid rgba(255, 255, 255, 0.4);
-  backdrop-filter: blur(4px);
+  background: linear-gradient(
+    to bottom, 
+    rgba(0, 0, 0, 0) 0%, 
+    rgba(0, 0, 0, 0.4) 30%, 
+    rgba(0, 0, 0, 0.75) 100%
+  );
+  border-top: 1px solid rgba(255, 255, 255, 0.6);
+  -webkit-mask-image: linear-gradient(
+    to right, 
+    transparent 0%, 
+    black 10%, 
+    black 90%, 
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right, 
+    transparent 0%, 
+    black 10%, 
+    black 90%, 
+    transparent 100%
+  );
 }
 .renpy-player__dialogue-bar {
   display: grid;
@@ -202,7 +220,12 @@
   font-weight: 600;
   letter-spacing: 0.05em;
   line-height: 1.2;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8), 0 0 4px rgba(0, 0, 0, 0.5);
+  text-shadow: 
+    -1px -1px 0 rgba(0, 0, 0, 0.8),  
+     1px -1px 0 rgba(0, 0, 0, 0.8),
+    -1px  1px 0 rgba(0, 0, 0, 0.8),
+     1px  1px 0 rgba(0, 0, 0, 0.8),
+     0px  3px 4px rgba(0, 0, 0, 0.6);
   transition: opacity var(--renpy-speaker-fade-ms) ease;
 }
 .renpy-player__speaker--visible {
@@ -218,7 +241,9 @@
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8), 0 0 4px rgba(0, 0, 0, 0.5);
+  text-shadow: 
+    1px 1px 2px rgba(0, 0, 0, 0.9),
+    0px 2px 4px rgba(0, 0, 0, 0.6);
 }
 .renpy-player__char {
   transition: opacity var(--renpy-text-fade-ms) ease;
