@@ -548,9 +548,15 @@ export function useDialogueReveal(
     }
   }
 
+  let trackedPrevFrame: PlayerFrame | null = null;
+
   watch(
-    currentFrame,
-    (nextFrame, prevFrame) => {
+    () => currentFrame.value?.index ?? -1,
+    () => {
+      const nextFrame = currentFrame.value;
+      const prevFrame = trackedPrevFrame;
+      trackedPrevFrame = nextFrame ?? null;
+
       if (!nextFrame || !nextFrame.text) {
         revealGeneration++;
         graphemes.value = [];
