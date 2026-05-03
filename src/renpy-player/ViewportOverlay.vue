@@ -13,7 +13,7 @@
           <div
             class="renpy-player__speaker"
             :class="controller.dialogue.speakerRevealed ? 'renpy-player__speaker--visible' : 'renpy-player__speaker--hidden'"
-          >{{ controller.dialogue.visibleSpeaker }}</div>
+          >{{ controller.dialogue.displayedSpeaker }}</div>
           <div class="renpy-player__text"><span
             v-for="(grapheme, i) in controller.dialogue.graphemes"
             :key="i"

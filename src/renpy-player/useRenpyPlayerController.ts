@@ -134,11 +134,10 @@ export function useRenpyPlayerController() {
 
   const currentFrame = computed(() => frames.value[frameIndex.value] ?? null);
 
-  const visibleSpeaker = computed(() => currentFrame.value?.speaker?.trim() ?? '');
-
   const {
     graphemes,
     revealedCharCount,
+    displayedSpeaker,
     speakerRevealed,
     isRevealing,
     isFullyRevealed,
@@ -661,7 +660,7 @@ export function useRenpyPlayerController() {
     },
 
     dialogue: {
-      visibleSpeaker,
+      displayedSpeaker,
       dialogueTextFull,
       graphemes,
       revealedCharCount,

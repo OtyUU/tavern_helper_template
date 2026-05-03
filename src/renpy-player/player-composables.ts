@@ -420,6 +420,7 @@ export function useDialogueReveal(
 ) {
   const graphemes = ref<string[]>([]);
   const revealedCharCount = ref(0);
+  const displayedSpeaker = ref('');
   const speakerRevealed = ref(true);
   const isRevealing = ref(false);
   const isFullyRevealed = ref(true);
@@ -454,6 +455,7 @@ export function useDialogueReveal(
     revealGeneration++;
     graphemes.value = [];
     revealedCharCount.value = 0;
+    displayedSpeaker.value = '';
     speakerRevealed.value = false;
     isRevealing.value = false;
     isFullyRevealed.value = true;
@@ -469,34 +471,44 @@ export function useDialogueReveal(
     const chars = splitToGraphemes(text);
     graphemes.value = chars;
 
+    const speaker = currentSpeaker?.trim() ?? '';
+    const prevSpk = prevSpeaker?.trim() ?? '';
+
     if (effectsDisabled.value) {
       revealedCharCount.value = chars.length;
-      speakerRevealed.value = true;
+      displayedSpeaker.value = speaker;
+      speakerRevealed.value = speaker !== '';
       isRevealing.value = false;
       scheduleFadeTail(gen);
       return;
     }
 
-    const speaker = currentSpeaker?.trim() ?? '';
-    const prevSpk = prevSpeaker?.trim() ?? '';
-    const hasSpeakerChange = speaker !== '' && speaker !== prevSpk;
+    const prevIsEmpty = prevSpk === '';
+    const nextIsEmpty = speaker === '';
+    const hasSpeakerGone     = !prevIsEmpty && nextIsEmpty;
+    const hasSpeakerAppeared = prevIsEmpty  && !nextIsEmpty;
 
     revealedCharCount.value = 0;
     isRevealing.value = true;
     isFullyRevealed.value = false;
 
-    if (hasSpeakerChange) {
+    if (hasSpeakerGone) {
       speakerRevealed.value = false;
       window.setTimeout(() => {
-        if (revealGeneration === gen) {
-          speakerRevealed.value = true;
-        }
+        if (revealGeneration === gen) displayedSpeaker.value = '';
+      }, settings.value.speakerFadeMs);
+    } else if (hasSpeakerAppeared) {
+      displayedSpeaker.value = speaker;
+      speakerRevealed.value = false;
+      window.setTimeout(() => {
+        if (revealGeneration === gen) speakerRevealed.value = true;
       }, settings.value.speakerFadeMs);
     } else {
-      speakerRevealed.value = true;
+      displayedSpeaker.value = speaker;
+      speakerRevealed.value = speaker !== '';
     }
 
-    const speakerIntroDelay = hasSpeakerChange
+    const speakerIntroDelay = hasSpeakerAppeared
       ? settings.value.speakerFadeMs + settings.value.speakerLeadInMs
       : 0;
 
@@ -540,6 +552,7 @@ export function useDialogueReveal(
         revealGeneration++;
         graphemes.value = [];
         revealedCharCount.value = 0;
+        displayedSpeaker.value = '';
         speakerRevealed.value = true;
         isRevealing.value = false;
         isFullyRevealed.value = true;
@@ -554,7 +567,7 @@ export function useDialogueReveal(
     if (disabled && (isRevealing.value || !isFullyRevealed.value)) {
       revealGeneration++;
       revealedCharCount.value = graphemes.value.length;
-      speakerRevealed.value = true;
+      speakerRevealed.value = displayedSpeaker.value !== '';
       isRevealing.value = false;
       isFullyRevealed.value = true;
     }
@@ -563,6 +576,7 @@ export function useDialogueReveal(
   return {
     graphemes,
     revealedCharCount,
+    displayedSpeaker,
     speakerRevealed,
     isRevealing,
     isFullyRevealed,
