@@ -445,7 +445,9 @@ export function useDialogueReveal(
     }
     const gen = revealGeneration;
     revealedCharCount.value = graphemes.value.length;
-    speakerRevealed.value = true;
+    const speaker = currentFrame.value?.speaker?.trim() ?? '';
+    displayedSpeaker.value = speaker;
+    speakerRevealed.value = speaker !== '';
     isRevealing.value = false;
     scheduleFadeTail(gen);
   }
