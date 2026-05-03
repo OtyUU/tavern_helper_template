@@ -533,10 +533,16 @@ export function useDialogueReveal(
       }, charDelay);
 
       let pause = 0;
-      if (SENTENCE_ENDERS.has(chars[i])) {
-        pause = settings.value.sentencePauseMs;
-      } else if (CLAUSE_MARKS.has(chars[i])) {
-        pause = settings.value.commaPauseMs;
+      const nextChar = chars[i + 1];
+      const nextIsPunct = nextChar !== undefined
+        && (SENTENCE_ENDERS.has(nextChar) || CLAUSE_MARKS.has(nextChar));
+
+      if (!nextIsPunct) {
+        if (SENTENCE_ENDERS.has(chars[i])) {
+          pause = settings.value.sentencePauseMs;
+        } else if (CLAUSE_MARKS.has(chars[i])) {
+          pause = settings.value.commaPauseMs;
+        }
       }
       cumulativeDelay += settings.value.textSpeedMs + pause;
     }
