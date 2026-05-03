@@ -97,11 +97,15 @@ Ambient globals — no import needed. Typed in `@types/function/` and `@types/if
 
 ## Script Grammar
 
-Line-based. Empty lines and `#`/`//` comments are ignored.
+Line-based. Empty lines, full-line `#`/`//` comments, and trailing inline comments are ignored.
 
 ### Source Selection
 
 `parseScriptFromMessage()` prefers the first fenced code block if it contains recognized commands (`source = 'fenced'`); otherwise parses the whole message (`source = 'message'`); else `source = 'none'`.
+
+### Inline Comments
+
+`stripInlineComment()` strips trailing comments outside quotes. `#` always starts a comment. `//` only starts a comment at start-of-line or after whitespace (so `chinami//comment` and URLs are preserved). Full-line comments are fast-pathed before stripping.
 
 ### Recognized Forms
 
