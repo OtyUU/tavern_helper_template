@@ -85,13 +85,8 @@
             <small>Speaker name opacity transition when the speaker changes.</small>
           </div>
 
-          <div class="renpy-player-settings__field">
-            <label>Speaker lead-in (ms)</label>
-            <input v-model.number="settings.speakerLeadInMs" class="text_pole" type="number" min="0" max="2000" step="10" />
-            <small>Pause after speaker intro before typing starts.</small>
-          </div>
 
-          <div class="renpy-player-settings__field">
+<div class="renpy-player-settings__field">
             <label>Auto-advance delay (ms)</label>
             <input v-model.number="settings.autoAdvanceDelayMs" class="text_pole" type="number" min="0" max="30000" step="100" />
             <small>Wait after reveal finishes before autoplay advances. 0 = immediate.</small>

@@ -33,7 +33,7 @@ const BaseSettingsSchema = z
     sentencePauseMs: z.coerce.number().int().min(0).max(5000).default(400),
     commaPauseMs: z.coerce.number().int().min(0).max(2000).default(150),
     speakerFadeMs: z.coerce.number().int().min(0).max(2000).default(250),
-    speakerLeadInMs: z.coerce.number().int().min(0).max(2000).default(120),
+
     autoAdvanceDelayMs: z.coerce.number().int().min(0).max(30000).default(2500),
     autoPlayDelayMs: z.coerce.number().int().min(500).max(20000).default(2500),
     followLatestPlayable: z.boolean().default(true),

@@ -400,7 +400,6 @@ type DialogueRevealSettings = {
   sentencePauseMs: number;
   commaPauseMs: number;
   speakerFadeMs: number;
-  speakerLeadInMs: number;
 };
 
 function splitToGraphemes(text: string): string[] {
@@ -508,21 +507,17 @@ export function useDialogueReveal(
       speakerRevealed.value = speaker !== '';
     }
 
-    const speakerIntroDelay = hasSpeakerAppeared
-      ? settings.value.speakerFadeMs + settings.value.speakerLeadInMs
-      : 0;
-
     if (settings.value.textSpeedMs <= 0) {
       window.setTimeout(() => {
         if (revealGeneration !== gen) return;
         revealedCharCount.value = chars.length;
         isRevealing.value = false;
         scheduleFadeTail(gen);
-      }, speakerIntroDelay);
+      }, 0);
       return;
     }
 
-    let cumulativeDelay = speakerIntroDelay;
+    let cumulativeDelay = 0;
     for (let i = 0; i < chars.length; i++) {
       const charIdx = i;
       const charDelay = cumulativeDelay;
