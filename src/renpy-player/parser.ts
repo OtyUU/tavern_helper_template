@@ -264,6 +264,15 @@ function parseLines(source: string): ParsedLines {
         return;
       }
 
+      // hide all
+      if (/^hide\s+all$/i.test(line)) {
+        commands.push({
+          type: 'hide-all',
+          raw: line,
+        });
+        return;
+      }
+
       // hide <character>
       const hideMatch = line.match(/^hide\s+([A-Za-z0-9_-]+)$/i);
       if (hideMatch) {
@@ -633,6 +642,12 @@ class StageState {
         this.backgroundName = bg;
         this.backgroundSegment = seg;
         this.background = createBackgroundAsset({ ...cmd, background: bg, segment: seg }, options);
+        for (const id of Object.keys(this.sprites)) delete this.sprites[id];
+        this.spriteOrder.length = 0;
+        return;
+      }
+
+      case 'hide-all': {
         for (const id of Object.keys(this.sprites)) delete this.sprites[id];
         this.spriteOrder.length = 0;
         return;

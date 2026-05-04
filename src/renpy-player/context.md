@@ -112,6 +112,7 @@ Line-based. Empty lines, full-line `#`/`//` comments, and trailing inline commen
 ```text
 scene <background> [segment]
 hide <character>
+hide all
 camera
 camera at <transform>[, <transform>...]
 show <character> [tokens...] [in <outfit>] [blush] [at <transform>[, <transform>...]]
@@ -124,6 +125,7 @@ show <character> [tokens...] [in <outfit>] [blush] [at <transform>[, <transform>
 
 - **`scene`**: clears visible sprites (not remembered outfits); reuses previous segment when omitted; marks next frame `isNewScene`.
 - **`hide`**: removes visible sprite; does not clear remembered outfit.
+- **`hide all`**: clears all visible sprites; does not affect background/segment/camera; remembered outfits are preserved.
 - **`camera`** / **`camera at`**: allowed camera transforms: `closeup`, `medium` (persistent); `shake` (one-frame). Bare `camera` clears transform + pending animations.
 - **`show` `at` clause**: must be last. Allowed transforms — positions: `left`, `center`, `right`; animations: `shake`, `bounce`, `pulse`.
 - **Token resolution** (remaining after `in`/`blush` extraction):

@@ -37,6 +37,11 @@ export type SceneCommand = {
   segment?: string;
 };
 
+export type HideAllCommand = {
+  type: 'hide-all';
+  raw: string;
+};
+
 export type DialogueCommand = {
   type: 'dialogue';
   raw: string;
@@ -44,7 +49,7 @@ export type DialogueCommand = {
   text: string;
 };
 
-export type ScriptCommand = SceneCommand | ShowCommand | HideCommand | CameraCommand | DialogueCommand;
+export type ScriptCommand = SceneCommand | ShowCommand | HideCommand | HideAllCommand | CameraCommand | DialogueCommand;
 
 export type SpriteState = {
   /** Sprite id (currently the character name) */
