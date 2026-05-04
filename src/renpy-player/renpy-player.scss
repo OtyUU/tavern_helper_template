@@ -43,7 +43,6 @@
 
 .renpy-player__scene-layer,
 .renpy-player__background,
-.renpy-player__gradient,
 .renpy-player__sprite-layer,
 .renpy-player__viewport {
   position: absolute;
@@ -67,12 +66,6 @@
 
 .renpy-player__sprite-layer {
   z-index: 1;
-}
-
-.renpy-player__gradient {
-  background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.04) 0%, rgba(0, 0, 0, 0.38) 55%, rgba(0, 0, 0, 0.86) 100%),
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.10), transparent 50%);
 }
 
 .renpy-player__sprite-shell {

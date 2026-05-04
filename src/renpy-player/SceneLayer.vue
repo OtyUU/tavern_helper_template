@@ -13,7 +13,6 @@
       :alt="controller.scene.displayedBackground.description"
       @resolution-status="controller.diagnostics.onAssetResolutionStatus('__background__', $event)"
     />
-    <div class="renpy-player__gradient"></div>
     <TransitionGroup
       tag="div"
       class="renpy-player__sprite-layer"
