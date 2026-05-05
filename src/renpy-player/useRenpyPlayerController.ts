@@ -93,8 +93,7 @@ export function useRenpyPlayerController() {
 
   const activeMessageId = computed(() => currentMessage.value?.message_id ?? null);
   const playableMessageIds = ref<number[]>([]);
-  const prevPlayableId = ref<number | null>(null);
-  const nextPlayableId = ref<number | null>(null);
+  const excludedPlayableMessageIds = ref<Set<number>>(new Set());
   const isGenerationInProgress = ref(false);
   const generationTargetMessageId = ref<number | null>(null);
 
@@ -110,6 +109,67 @@ export function useRenpyPlayerController() {
     if (canAutoAdvanceNow.value) return 'active';
     return 'idle-end';
   });
+
+  // ─── Phase 1: Playable message index ──────────────────────────────────────
+
+  function isMessagePlayable(msg: ChatMessage | undefined | null): boolean {
+    if (!msg) return false;
+    if (msg.is_hidden) return false;
+    return parseScriptFromMessage(msg.message ?? '').commands.length > 0;
+  }
+
+  function rebuildPlayableIndex() {
+    const last = getLastMessageId();
+    if (last < 0) {
+      playableMessageIds.value = [];
+      return;
+    }
+    const all = getChatMessages(`0-${last}`);
+    const excluded = excludedPlayableMessageIds.value;
+    playableMessageIds.value = all
+      .filter(m => m && !excluded.has(m.message_id) && isMessagePlayable(m))
+      .map(m => m!.message_id)
+      .sort((a, b) => a - b);
+  }
+
+  function findPrevPlayableId(id: number | null): number | null {
+    if (id === null) return null;
+    const ids = playableMessageIds.value;
+    let left = 0;
+    let right = ids.length - 1;
+    let result: number | null = null;
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      if (ids[mid] < id) {
+        result = ids[mid];
+        left = mid + 1;
+      } else {
+        right = mid - 1;
+      }
+    }
+    return result;
+  }
+
+  function findNextPlayableId(id: number | null): number | null {
+    if (id === null) return null;
+    const ids = playableMessageIds.value;
+    let left = 0;
+    let right = ids.length - 1;
+    let result: number | null = null;
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      if (ids[mid] > id) {
+        result = ids[mid];
+        right = mid - 1;
+      } else {
+        left = mid + 1;
+      }
+    }
+    return result;
+  }
+
+  const prevPlayableId = computed(() => findPrevPlayableId(activeMessageId.value));
+  const nextPlayableId = computed(() => findNextPlayableId(activeMessageId.value));
 
   const characterNormalizationScales = computed(() => {
     const scales: Record<string, number> = {};
@@ -638,16 +698,38 @@ export function useRenpyPlayerController() {
   onMounted(() => {
     setupReducedMotion();
 
+    rebuildPlayableIndex();
     fullSync();
 
     lifecycleStopList.push(
-      eventOn(tavern_events.CHAT_CHANGED, fullSync).stop,
-      eventOn(tavern_events.MESSAGE_RECEIVED, onMessageReceived).stop,
-      eventOn(tavern_events.MESSAGE_EDITED, onMessageChanged).stop,
-      eventOn(tavern_events.MESSAGE_UPDATED, onMessageChanged).stop,
-      eventOn(tavern_events.MESSAGE_DELETED, fullSync).stop,
-      eventOn(tavern_events.MESSAGE_SWIPED, onMessageChanged).stop,
-      eventOn(tavern_events.MORE_MESSAGES_LOADED, fullSync).stop,
+      eventOn(tavern_events.CHAT_CHANGED, () => {
+        rebuildPlayableIndex();
+        fullSync();
+      }).stop,
+      eventOn(tavern_events.MESSAGE_RECEIVED, (messageId: number) => {
+        rebuildPlayableIndex();
+        onMessageReceived(messageId);
+      }).stop,
+      eventOn(tavern_events.MESSAGE_EDITED, (messageId: number) => {
+        rebuildPlayableIndex();
+        onMessageChanged(messageId);
+      }).stop,
+      eventOn(tavern_events.MESSAGE_UPDATED, (messageId: number) => {
+        rebuildPlayableIndex();
+        onMessageChanged(messageId);
+      }).stop,
+      eventOn(tavern_events.MESSAGE_DELETED, () => {
+        rebuildPlayableIndex();
+        fullSync();
+      }).stop,
+      eventOn(tavern_events.MESSAGE_SWIPED, (messageId: number) => {
+        rebuildPlayableIndex();
+        onMessageChanged(messageId);
+      }).stop,
+      eventOn(tavern_events.MORE_MESSAGES_LOADED, () => {
+        rebuildPlayableIndex();
+        fullSync();
+      }).stop,
     );
   });
 
