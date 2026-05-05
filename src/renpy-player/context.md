@@ -4,63 +4,36 @@ Agent-facing context for `src/renpy-player`. Trust this over upstream Ren'Py doc
 
 ## Purpose
 
-Renders a Ren'Py-like VN viewport inside the SillyTavern chat UI from LLM-produced text. This is a *visualizer* for a small command subset embedded in chat messages.
-
-- The **chat** is the interaction surface (swipes/edits/regens/user replies/history).
-- The **viewport** just renders the parsed scene + dialogue frames for the selected message.
-- By default it follows the **latest message that contains recognized commands**.
-
-Custom script subset only — no branching, variables, ATL, audio, or screen language.
-
-## Typical Workflow
-
-1. User prompts the LLM to include Ren'Py-like commands somewhere in its response (often as a fenced code block).
-2. The player auto-selects the latest “playable” message (or a manually selected message id).
-3. The parser extracts supported lines from that message and renders frames in the viewport.
-4. Earlier messages are replayed to compute **inherited stage state** (background/sprites/outfits/camera).
+Renders a Ren'Py-like VN viewport inside the SillyTavern chat UI from LLM-produced text. The **chat** is the interaction surface; the **viewport** visualizes parsed scene + dialogue frames for the selected message. By default it follows the latest message containing recognized commands.
 
 ## Runtime Environment
 
-- **Module type**: Tavern Helper **script** (only `index.ts`, no `index.html`). Mounts Vue apps directly onto the SillyTavern host page via jQuery — not inside an iframe UI.
-- **jQuery scope**: `$` operates on the host page (`window.$ = window.parent.$`), so `$('#chat')` selects the real chat element.
-- **Style teleportation**: Styles compiled in the background iframe don't reach the host page. `teleportStyle()` copies compiled `<style>` elements into the host `<head>`. This is why the module uses unscoped SCSS with BEM `renpy-player__` classes — **no tailwindcss** (class collisions with SillyTavern).
-- **Swipes/regenerations**: Swiping does **not** change `message_id` — the same message gets new swipe text. Don't assume "new generation == new message id".
-- **Lifecycle**: Init in `$(() => { ... })` (not `DOMContentLoaded`). Cleanup via `$(window).on('pagehide', ...)` (not `'unload'`).
-- **DOM mounting**:
-  - `createScriptIdDiv()` creates `<div script_id="...">` for Tavern Helper scoped management.
-  - Player host: `attr('id', 'th-renpy-player')`, inserted before `$('#chat')`. Must re-attach on `CHAT_CHANGED` and `MORE_MESSAGES_LOADED` (SillyTavern rebuilds chat DOM).
-  - Settings host: appended to `#extensions_settings2`.
-  - Single `createPinia()` in `index.ts`, shared by both apps via `.use(pinia)`.
+- **Module type**: Tavern Helper **script** (`index.ts` only, no `index.html`). Mounts Vue apps directly onto the SillyTavern host page via jQuery — not inside an iframe.
+- **jQuery scope**: `$` operates on the host page (`window.$ = window.parent.$`).
+- **Style teleportation**: Styles compiled in the background iframe don't reach the host page. `teleportStyle()` copies compiled `<style>` elements into the host `<head>`. Use unscoped SCSS with BEM `renpy-player__` classes — **no Tailwind** (class collisions with SillyTavern).
+- **Swipes/regenerations**: Swiping does **not** change `message_id` — the same message gets new swipe text.
+- **Lifecycle**: Init in `$(() => { ... })`. Cleanup via `$(window).on('pagehide', ...)`.
+- **DOM mounting**: Player host: `attr('id', 'th-renpy-player')`, inserted before `$('#chat')`. Must re-attach on `CHAT_CHANGED` and `MORE_MESSAGES_LOADED`. Settings host: appended to `#extensions_settings2`. Single `createPinia()` in `index.ts`, shared by both apps.
 
 ## Build System & Auto-Imports
 
-**Auto-imported (no import statement):**
-- Vue Composition API: `ref`, `computed`, `watch`, `watchEffect`, `onMounted`, `onScopeDispose`, `onBeforeUnmount`, `createApp`, `createPinia`, `defineStore`, `storeToRefs`, `inject`, `provide`, `reactive`, `readonly`, etc.
-- `z` (Zod root namespace)
-- `klona` (deep-clone; required before any `insertOrAssignVariables()` call — Vue Proxy causes serialization issues)
-- VueUse functions from `@vueuse/core`
+**Auto-imported (no import statement):** Vue Composition API (`ref`, `computed`, `watch`, `watchEffect`, `onMounted`, `onScopeDispose`, `onBeforeUnmount`, `createApp`, `createPinia`, `defineStore`, `storeToRefs`, `inject`, `provide`, `reactive`, `readonly`), `z` (Zod), `klona`, VueUse functions from `@vueuse/core`.
 
-**Require explicit import:** local modules (`./parser`, `./types`, etc.), `@util/script` utilities, `.vue` components.
+**Require explicit import:** local modules, `@util/script` utilities, `.vue` components.
 
-**Build constraints:**
-- Options API disabled (`__VUE_OPTIONS_API__ = false`). Always use `<script setup lang="ts">`.
-- Path alias: `@util/` → project-root `util/`.
+**Constraints:** Options API disabled. Always use `<script setup lang="ts">`. Path alias: `@util/` → project-root `util/`.
 
 ## Tavern Helper Globals
 
-Ambient globals — no import needed. Typed in `@types/function/` and `@types/iframe/`.
-
 | Global | Purpose |
 |---|---|
-| `getChatMessages(id)` | Fetch messages by ID, range (`'0-5'`), or negative depth (`-1` = latest). Returns `ChatMessage[]`; `[0]` may be `undefined`. |
-| `getLastMessageId()` | Highest message ID (0-based) in current chat. |
+| `getChatMessages(id)` | Fetch by ID, range (`'0-5'`), or negative depth (`-1` = latest). Returns `ChatMessage[]`. |
+| `getLastMessageId()` | Highest message ID (0-based). |
 | `getVariables({ type, script_id })` | Read script-scoped variables. |
 | `insertOrAssignVariables(obj, target)` | Write/merge variables. Always `klona()` reactive values first. |
 | `getScriptId()` | Unique ID string of this script. |
-| `eventOn(eventType, cb)` | Subscribe to an event. Returns `{ stop }`. |
-| `tavern_events` | Event name constants. Full catalog in `@types/iframe/event.d.ts`. |
-| `iframe_events` | Event name constants for helper-side `generate()` calls (not ST chat generation). |
-| `registerMacroLike(regex, replacer)` | Register a prompt macro. Returns `{ unregister }`. |
+| `eventOn(eventType, cb)` | Subscribe to event. Returns `{ stop }`. |
+| `registerMacroLike(regex, replacer)` | Register prompt macro. Returns `{ unregister }`. |
 
 **ChatMessage shape:** `{ message_id: number, name, role, is_hidden, message: string, data, extra }`
 
@@ -76,28 +49,7 @@ Ambient globals — no import needed. Typed in `@types/function/` and `@types/if
 | `GENERATION_STOPPED` | `() => void` |
 | `GENERATION_ENDED` | `(message_id: number) => void` |
 
-#### Important: `tavern_events.GENERATION_STARTED` includes dry runs
-
-SillyTavern emits `tavern_events.GENERATION_STARTED` not only for the visible assistant reply,
-but also for internal/background pipeline runs such as prompt building / token counting.
-Those runs can appear immediately after a normal generation ends and often have:
-
-- `dry_run: true`
-
-Player logic that wants "streaming message is incomplete" behavior (e.g., safe-frame lock)
-**must ignore `dry_run` generations**, otherwise the UI will incorrectly re-enter "generation in progress"
-after the visible reply is finished.
-
-Also note `GENERATION_STOPPED` is a distinct event (user abort) and should be treated as an "end" for lock cleanup.
-
-#### Generation lock target is NOT reliably `getLastMessageId()`
-
-At `GENERATION_STARTED`, `getLastMessageId()` may still be the **user** message (assistant placeholder not created yet).
-Also, swipe/regeneration updates reuse the same `message_id`.
-
-Therefore the player uses a two-step approach:
-- **Prediction** on `GENERATION_STARTED`: if the current last message is `role:'user'`, predict target = `last + 1`; else predict target = `last`.
-- **Confirmation**: the first `MESSAGE_UPDATED(message_id)` observed while generation is in progress is treated as authoritative and may retarget the lock.
+`GENERATION_STARTED` fires for internal dry-run pipeline passes (`dry_run: true`). All generation-lock logic must ignore these.
 
 ## File Map
 
@@ -106,36 +58,36 @@ Therefore the player uses a two-step approach:
 | `index.ts` | Mounts apps, registers `teleportStyle()`, wires `pagehide` cleanup |
 | `App.vue` | Creates controller, provides it, renders `<PlayerStage />` |
 | `PlayerStage.vue` | Stage div with click handler; renders `<SceneLayer />` + `<ViewportOverlay />` |
-| `SceneLayer.vue` | Background `SmartImage`, scene fade div, gradient, sprite `TransitionGroup` (enter/leave hooks) |
+| `SceneLayer.vue` | Background `SmartImage`, scene fade div, sprite `TransitionGroup` (enter/leave hooks) |
 | `ViewportOverlay.vue` | HUD: dialogue bar (grapheme spans, `displayedSpeaker`), transport controls, message stepper, `<DiagnosticsPanel />` |
-| `SmartImage.vue` | Candidate waterfall loading, swap crossfade, `resolved` emit |
+| `SmartImage.vue` | Candidate waterfall loading, swap crossfade, emits `resolved` (with `naturalWidth`/`naturalHeight`) and `resolutionStatus` |
 | `DiagnosticsPanel.vue` | `<details>` diagnostics UI |
 | `SettingsPanel.vue` | Settings UI only |
-| `useRenpyPlayerController.ts` | Orchestration: store wiring, frame/message selection, stage geometry, dialogue wiring, lifecycle, event handlers. Exposes grouped API: `model`, `stage`, `scene`, `dialogue`, `transport`, `selection`, `autoplay`, `diagnostics`. `dialogue.displayedSpeaker` replaces old `visibleSpeaker` |
-| `player-composables.ts` | `useScenePresentation`, `useSpriteVisibilityTransitions`, `useDialogueReveal`, `useAutoplay`, `useReducedMotion`. `useDialogueReveal` exposes `displayedSpeaker` (reactive ref, managed independently from reveal timing) |
+| `useRenpyPlayerController.ts` | Orchestration: store wiring, playable-index, frame/message selection, stage geometry, generation lock, lifecycle, event handlers. Exposes grouped API: `model`, `stage`, `scene`, `dialogue`, `transport`, `selection`, `autoplay`, `diagnostics` |
+| `player-composables.ts` | `useScenePresentation`, `useSpriteVisibilityTransitions`, `useDialogueReveal`, `useAutoplay`, `useReducedMotion` |
 | `player-context.ts` | `InjectionKey` + `useRenpyPlayer()` inject helper |
 | `parser.ts` | Grammar, token resolution, `StageState`, `buildFrames()`, `getInitialState()` |
 | `types.ts` | Command, asset, frame, and state contracts |
-| `settings.ts` | Zod schema, saved-settings repair, character config parsing, Pinia store, persistence wiring |
-| `status-macro.ts` | `{{vn_state}}` macro: replays history → formats `InitialPlayerState` as Ren'Py-style text |
+| `settings.ts` | Zod schema, settings repair, character config parsing, Pinia store, persistence wiring |
+| `status-macro.ts` | `{{vn_state}}` macro: replays history → formats `InitialPlayerState` as Ren'Py-style text. Exports `computePlayerStatus` (testable entry point) and `registerPlayerStatusMacro`. Module-level `activeGenerationType` tracks current generation type for regen detection. |
 | `renpy-player.scss` | All player styles (unscoped, BEM). No `:deep()` — use descendant selectors |
-| `context.md` | This file. Update when implemented behavior changes |
+| `context.md` | This file |
 
 ## Script Grammar
 
-Line-based. Empty lines, full-line `#`/`//` comments, and trailing inline comments are ignored.
+Line-based. Empty lines, full-line `#`/`//` comments, and trailing inline comments are stripped.
 
 ### Source Selection
 
-`parseScriptFromMessage()` prefers the first fenced code block if it contains recognized commands (`source = 'fenced'`); otherwise parses the whole message (`source = 'message'`); else `source = 'none'`.
+`parseScriptFromMessage()` prefers the first fenced code block if it contains recognized commands (`source = 'fenced'`). Otherwise it parses the whole message — if the result has any commands **or** `ignoredLines`, `source = 'message'`; otherwise `source = 'none'`.
 
 ### Inline Comments
 
-`stripInlineComment()` strips trailing comments outside quotes. `#` always starts a comment. `//` only starts a comment at start-of-line or after whitespace (so `chinami//comment` and URLs are preserved). Full-line comments are fast-pathed before stripping.
+`stripInlineComment()` strips trailing comments outside quotes. `#` always starts a comment. `//` only starts a comment at start-of-line or after whitespace (`chinami//comment` and URLs are preserved).
 
 ### Recognized Forms
 
-```text
+```
 scene <background> [segment]
 hide <character>
 hide all
@@ -151,53 +103,51 @@ show <character> [tokens...] [in <outfit>] [blush] [at <transform>[, <transform>
 
 - **`scene`**: clears visible sprites (not remembered outfits); reuses previous segment when omitted; marks next frame `isNewScene`.
 - **`hide`**: removes visible sprite; does not clear remembered outfit.
-- **`hide all`**: clears all visible sprites; does not affect background/segment/camera; remembered outfits are preserved.
-- **`camera`** / **`camera at`**: allowed camera transforms: `closeup`, `medium` (persistent); `shake` (one-frame). Bare `camera` clears transform + pending animations.
-- **`show` `at` clause**: must be last. Allowed transforms — positions: `left`, `center`, `right`; animations: `shake`, `bounce`, `pulse`.
-- **Token resolution** (remaining after `in`/`blush` extraction):
+- **`hide all`**: clears all visible sprites; background/segment/camera/remembered outfits are preserved.
+- **`camera`** / **`camera at`**: allowed persistent transforms: `closeup`, `medium`; one-shot animation: `shake`. Bare `camera` clears transform + pending animations.
+- **`show` `at` clause**: must be last. Positions: `left`, `center`, `right`; animations: `shake`, `bounce`, `pulse`.
+- **Token resolution** (after `in`/`blush` extraction):
   - 2+ tokens → first = pose, second = expression
-  - 1 token → pose if in configured `poseTokens`, else expression
+  - 1 token → pose if in `poseTokens`, else expression
   - 0 tokens → inherit current or fall back to defaults
 - **Blush persistence**: explicit `blush` sets true; changing expression without `blush` clears it; otherwise carries forward.
-- **Say-with-attrs** (`chinami base neutral "Hello"`) emits a `show` command + a `dialogue` command.
-- Invalid lines (unsupported transforms, unrecognized forms) go to `ParsedScript.ignoredLines`.
+- **Say-with-attrs** (`chinami base neutral "Hello"`) emits a `show` command then a `dialogue` command.
+- Invalid lines go to `ParsedScript.ignoredLines`.
 
 ## State & Frames
 
 - Visual commands mutate `StageState` but do not emit frames.
-- `dialogue` command emits a frame from the current flushed stage state.
-- Scripts with visuals but no dialogue emit a single preview frame (`Scene Preview` / `Active Scene`).
-- Trailing visual-only commands emit a `Scene Preview` frame.
-- `flush()` clears pending camera animations and one-shot sprite animations only.
-- `getInitialState()` replays earlier messages oldest→newest and also calls `flush()` to prevent history animations leaking into frame 0.
+- `dialogue` command emits a frame from the current stage state via `stage.flush()`.
+- `flush()` returns a snapshot `{ background, cameraTransform, cameraAnimations, sprites }` **and** clears pending camera animations and one-shot sprite animations. It is both a read and a clear.
+- Scripts with visuals but no dialogue emit a single preview frame.
+- Trailing visual-only commands after the last dialogue emit a `Scene Preview` frame.
+- `getInitialState()` replays earlier messages oldest→newest, then calls `flush()` to prevent history animations leaking into frame 0.
 - Remembered outfits persist even when a character is hidden.
 - Camera transform persists until cleared; camera animation does not.
 
 ## Asset Resolution
 
-- `assetRoot` paths use normalized forward slashes.
-- Candidates are built for every extension in `assetExtensions` in listed order. `SmartImage` tries in order, uses the first that resolves.
+Paths use normalized forward slashes. Candidates are built for every extension in `assetExtensions` in order. `SmartImage` tries them in order, uses the first that loads.
 
 ### Backgrounds
-
-Path: `<assetRoot>/bg/<background>[-<segment>].<ext>`
+`<assetRoot>/bg/<background>[-<segment>].<ext>`
 
 ### Sprites
-
-Path: `<assetRoot>/<character>/<outfit>/<poseCandidate>/<expression>[-blush].<ext>`
+`<assetRoot>/<character>/<outfit>/<poseCandidate>/<expression>[-blush].<ext>`
 
 - **Pose fallback chain** (up to 8, deduplicated): `wantedPose` → `defaultPose` → each entry in `poseTokens`
-- **Base name order**: blush → `<expression>-blush`, then `<expression>`; non-blush → `<expression>`
-- The full candidate list is built upfront across all pose fallbacks; `SmartImage` iterates it.
 - Character, outfit, pose, expression, background, segment are lowercased in paths.
-- Missing assets don't stop frame construction.
 
 ### Character Config (`characterSpriteConfig`)
+Per-character JSON keys: `defaultOutfit`, `poseTokens`, `referenceHeight`. Keys starting with `_` are comments. Unknown fields are silently dropped.
 
-Per-character JSON keys: `defaultOutfit`, `poseTokens`, `referenceHeight`. Keys starting with `_` are comments (ignored). Unknown fields are silently dropped.
+### Sprite Normalization Pipeline
+1. `SmartImage` emits `resolved` with `{ naturalHeight }`.
+2. `onSpriteResolved(spriteId, { naturalHeight })` records the height **only on first resolution** — subsequent asset swaps do not update the scale.
+3. `characterNormalizationScales` computes `referenceHeight / naturalHeight` per character.
+4. The scale is injected as `--sprite-normalize-scale` in `shellStyle` on `renderedSprites` and applied in CSS via `calc(var(--sprite-scale) * var(--sprite-normalize-scale))`.
 
 ### Key Defaults
-
 ```
 assetExtensions = 'png,jpg,jpeg,webp'
 defaultPose = 'base'
@@ -207,56 +157,83 @@ spriteReferenceHeight = 2000
 stageHeight = 480
 ```
 
+## Settings Schema — Notable Fields
+
+- **`preferredMessageId`** (nullable int): persisted across sessions; seeds `activeMessageId` and `manualMessageId` on startup; written on every navigation action.
+- **`followLatestPlayable`** (boolean, default `true`): when true, any new playable message snaps the viewport forward.
+- **`autoAdvanceDelayMs`**: wait after reveal completes before autoplay advances. Effective total delay is `textFadeMs + autoAdvanceDelayMs` because autoplay cannot advance until `isFullyRevealed` is true.
+- **`autoPlayDelayMs`**: present in schema (500–20000, default 2500) but **not read anywhere** — dead field.
+
+## Controller Architecture
+
+### Sync Paths (two tiers)
+- **`fullSync(options?)`**: rebuilds playable index, bumps `historyTrigger`, resolves and sets `activeMessageId`/`manualMessageId`/`preferredMessageId`. Used on `CHAT_CHANGED`, `MESSAGE_DELETED`, `MORE_MESSAGES_LOADED`, and initial mount.
+- **`refreshCurrentMessageOnly()`**: bumps `historyTrigger` only, no index rebuild. Used for in-place edits/updates of the current message.
+
+### Deferred Position Tokens
+`pendingFrameTarget: null | { kind: 'first' } | { kind: 'last' }` defers `frameIndex` resolution to when `frames` recomputes (needed because `activeMessageId` changes before the new frames are available):
+- `{ kind: 'last' }`: set before jumping backward across messages (`stepBackwardInternal`, `jumpToSafeFrameBefore`). `frameIndex = Number.MAX_SAFE_INTEGER` is used as a sentinel; the `watch(frames)` handler clamps it to `frames.length - 1`.
+- `{ kind: 'first' }`: set in `jumpToSafeFrameBefore` when the safe frame is ahead of the excluded target.
+
+### Seamless Cross-Message Bridge
+`pendingBridge: { targetKey: string; prevFrame: PlayerFrame } | null` supplies the correct `prevFrame` to `applyFrame` when changing messages, so scene transitions animate against the last frame of the prior message rather than `null`. Set just before `activeMessageId` changes in `stepForwardInternal`, `onMessageReceived` (follow-latest), and the follow-latest nudge in `useLatestPlayable`. Consumed and cleared in `watch(currentFrame)` when the key matches.
+
+### `isBusy`
+`computed(() => isSceneTransitioning.value)`. Gates `canStepForward`, start of `canToggleAutoplay`, and the advance path in `onStageClick`.
+
+### Generation Safe-Frame Lock
+- **`GENERATION_STARTED`** (non-dry-run, non-quiet): predicts target message ID — if last message is `role:'user'`, predict `last + 1`; else predict `last`. Adds to `excludedPlayableMessageIds`; rebuilds index; if current viewport is on the excluded ID, calls `jumpToSafeFrameBefore` (sets `motionMode = 'instant'`).
+- **First `MESSAGE_UPDATED`** while lock is active is treated as authoritative; may retarget the lock to a different message ID. Subsequent `MESSAGE_UPDATED` events for the locked target are ignored to avoid parse churn.
+- **`GENERATION_ENDED` / `GENERATION_STOPPED`**: clears exclusions, rebuilds index.
+
+### `motionMode`
+- `'instant'`: set by `jumpToSafeFrameBefore`, manual message ID application, and backward navigation.
+- `'normal'`: set by `setMotionModeForNav(targetIndex)` when `targetIndex >= frameIndex` (forward), and explicitly by `stepForwardInternal` and `onMessageReceived` on cross-message forward jumps.
+- `effectsDisabled = prefersReducedMotion || motionMode === 'instant'` — zeros all transition durations.
+
+### Autoplay
+- `canToggleAutoplay` requires `hasNextStep.value` to **start** autoplay. The button is disabled at end-of-chat if autoplay is not already active.
+- Once active, autoplay idles (stays enabled) at end-of-chat or during generation lock.
+- Stage click does **not** stop autoplay — it skips reveal or advances frame.
+- All other manual actions (transport buttons, jump-to-latest, message stepper, typed message ID apply) stop autoplay.
+
+### Message ID Input
+- Typing into the stepper input updates `manualMessageId` only — does not change active message or restart reveal.
+- Applying (blur / change / Enter) calls `resolveNearestPlayableId` to snap to the nearest playable ID. The input is then overwritten with the resolved value. Typing `50` when the nearest playable is `48` silently moves to `48`.
+- `followLatestPlayable` is **not** cleared by manual message selection.
+
+### `SceneLayer` rendering
+`SceneLayer` iterates `controller.scene.renderedSprites` (not `displayedSprites` directly). `renderedSprites` is a computed that augments each sprite with: `renderKey`, `animationClass`, `shellStyle` (including `--sprite-ref-height` and `--sprite-normalize-scale`), and `swapDurationMs` for `SmartImage`.
+
 ## Status Macro (`{{vn_state}}`)
 
-Output format (Ren'Py-style text, empty string if no background and no visible sprites):
+Output format (empty string if no background and no visible sprites):
 ```
 scene <background> [<segment>]
 camera at <transform>          ← only if set
 show <char> in <outfit> <pose> <expression>[ blush] at <position>
-                               ← one per visible sprite
+
 [offstage]
 <character>: <outfit>          ← remembered outfits for hidden characters
 ```
-Regenerations/swipes: excludes the current (being-generated) message from history replay.
+
+Regenerations/swipes: `activeGenerationType` (tracked via `GENERATION_STARTED` / `GENERATION_ENDED`) determines whether to exclude the last message. Module-level `null` state logs a warning and defaults to full history.
 
 ## Sharp Edges
 
-- **Script module, not iframe UI.** No `index.html`, no tailwindcss, no scoped CSS.
+- **Script module, not iframe UI.** No `index.html`, no Tailwind, no scoped CSS.
 - **`klona()` is mandatory** before `insertOrAssignVariables()` or any Tavern Helper API receiving a reactive value.
 - **`ensurePlayerHost()`** must be called on `CHAT_CHANGED` — SillyTavern rebuilds the chat DOM.
-- **Generation events include dry runs.**
-  `tavern_events.GENERATION_STARTED(type, option, dry_run)` may fire for internal/background runs after a reply completes.
-  Any "generation lock" / "exclude incomplete message" logic must ignore `dry_run === true`,
-  and should also clear state on `tavern_events.GENERATION_STOPPED`.
-- **Generation safe-frame lock: target selection**
-  - On `GENERATION_STARTED` (non-dry-run, non-quiet), the player excludes a *predicted* target message id:
-    - if `getLastMessageId()` is a `role:'user'` message, predict target = `last + 1` (assistant reply not created yet)
-    - otherwise predict target = `last`
-  - While generation is in progress, the **first** `MESSAGE_UPDATED(message_id)` is treated as authoritative and may retarget the lock to that message id (important for swipes/regens and timing).
-  - `MESSAGE_UPDATED` spam for the locked target is ignored to avoid constant parsing/index rebuild churn.
-  - On `GENERATION_ENDED` / `GENERATION_STOPPED`, exclusions are cleared and the playable index is rebuilt.
-- **`at` clause** is only valid as the final clause in `show`/`camera at`.
-- **Say-with-attrs emits two commands** — a `show` then a `dialogue`.
-- **`TransitionGroup`** keys sprites by `renderKey = sprite.id`. Re-showing the same character updates the existing DOM node; enter/leave hooks only fire for genuine additions/removals.
-- **`SceneLayer`** renders `displayedBackground`/`displayedSprites` (presentation layer), not `currentFrame` directly — they can differ during scene transitions.
-- **`motionMode = 'instant'`** is set on manual message jumps and backward navigation; resets to `'normal'` on forward navigation.
-- **`effectsDisabled`** = `prefersReducedMotion || motionMode === 'instant'` — zeros all transition durations.
-- Only the first fenced code block gets parse priority; later blocks are considered only in whole-message fallback.
-- **Speaker display** uses `displayedSpeaker` (a reactive ref inside `useDialogueReveal`), not a computed from the current frame. Three-way transition: speaker appears (fade in via `speakerFadeMs`), speaker disappears (fade out, then `displayedSpeaker` clears after `speakerFadeMs`), no change (instant update). Empty/missing speaker → `speakerRevealed = false`. There is no lead-in delay before typing — text reveal starts immediately.
-- **Autoplay + user actions**
-  - Autoplay is continuous across message boundaries (end of frames → next playable message).
-  - Autoplay idles (stays enabled) at end-of-chat and during generation lock.
-  - Stage click does **not** stop autoplay (it skips reveal / advances).
-  - Non-stage-click manual actions stop autoplay (transport buttons, jump-to-latest, message stepper, applying typed message id).
-
-- **Follow-latest persistence (important)**:
-  - `followLatestPlayable` is **not** disabled by manual message selection (stepper / typed message id).
-  - When `followLatestPlayable` is enabled and a **new playable message** arrives, the viewport **snaps forward automatically** to the newest playable message.
-  - The snap uses the same **seamless forward bridge** behavior as cross-message step-forward (normal motion; no forced instant mode unless reduced-motion/instant is active).
-
-- **Message ID input UX**:
-  - The message-id input (`manualMessageId`) is *decoupled* from playback; **typing** does not change the active message or restart dialogue reveal.
-  - Applying the jump happens on **blur**, **change**, or **Enter**.
+- **`source:'message'`** is returned when `ignoredLines.length > 0` even if `commands.length === 0`.
+- **`flush()` is both read and clear** — do not call it just for its side effect without capturing the return value.
+- **Normalization scale is locked on first `SmartImage` resolution.** Hot-swapping a character's asset set after initial load will not update the scale.
+- **`autoPlayDelayMs`** is in the schema but unused. Do not wire new code to it; use `autoAdvanceDelayMs`.
+- **`GENERATION_STARTED` dry runs**: fire after a normal reply completes; `dry_run === true` must be ignored by any generation-lock logic.
+- **`at` clause** is only valid as the final clause in `show` / `camera at`.
+- **Say-with-attrs emits two commands** — `show` then `dialogue`.
+- **`TransitionGroup`** keys sprites by `renderKey = sprite.id`. Re-showing the same character updates the existing DOM node; enter/leave hooks only fire for genuine add/remove.
+- **Speaker display** uses `displayedSpeaker` (managed by `useDialogueReveal`), not a direct computed from the current frame. Three-way transition: appear (fade in via `speakerFadeMs`), disappear (fade out, then clear after `speakerFadeMs`), no change (instant update).
+- **Effective autoplay delay** = `textFadeMs + autoAdvanceDelayMs`. Autoplay will not advance until `isFullyRevealed` is true.
+- **`pendingFrameTarget { kind: 'last' }` uses `Number.MAX_SAFE_INTEGER`** as a sentinel for `frameIndex`; the `watch(frames)` handler clamps it.
 
 Update this file when implemented behavior changes in a way an agent should know before editing.
