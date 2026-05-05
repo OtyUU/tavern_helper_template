@@ -24,6 +24,7 @@ Custom script subset only — no branching, variables, ATL, audio, or screen lan
 - **Module type**: Tavern Helper **script** (only `index.ts`, no `index.html`). Mounts Vue apps directly onto the SillyTavern host page via jQuery — not inside an iframe UI.
 - **jQuery scope**: `$` operates on the host page (`window.$ = window.parent.$`), so `$('#chat')` selects the real chat element.
 - **Style teleportation**: Styles compiled in the background iframe don't reach the host page. `teleportStyle()` copies compiled `<style>` elements into the host `<head>`. This is why the module uses unscoped SCSS with BEM `renpy-player__` classes — **no tailwindcss** (class collisions with SillyTavern).
+- **Swipes/regenerations**: Swiping does **not** change `message_id` — the same message gets new swipe text. Don't assume "new generation == new message id".
 - **Lifecycle**: Init in `$(() => { ... })` (not `DOMContentLoaded`). Cleanup via `$(window).on('pagehide', ...)` (not `'unload'`).
 - **DOM mounting**:
   - `createScriptIdDiv()` creates `<div script_id="...">` for Tavern Helper scoped management.
@@ -88,6 +89,15 @@ Player logic that wants "streaming message is incomplete" behavior (e.g., safe-f
 after the visible reply is finished.
 
 Also note `GENERATION_STOPPED` is a distinct event (user abort) and should be treated as an "end" for lock cleanup.
+
+#### Generation lock target is NOT reliably `getLastMessageId()`
+
+At `GENERATION_STARTED`, `getLastMessageId()` may still be the **user** message (assistant placeholder not created yet).
+Also, swipe/regeneration updates reuse the same `message_id`.
+
+Therefore the player uses a two-step approach:
+- **Prediction** on `GENERATION_STARTED`: if the current last message is `role:'user'`, predict target = `last + 1`; else predict target = `last`.
+- **Confirmation**: the first `MESSAGE_UPDATED(message_id)` observed while generation is in progress is treated as authoritative and may retarget the lock.
 
 ## File Map
 
@@ -219,6 +229,13 @@ Regenerations/swipes: excludes the current (being-generated) message from histor
   `tavern_events.GENERATION_STARTED(type, option, dry_run)` may fire for internal/background runs after a reply completes.
   Any "generation lock" / "exclude incomplete message" logic must ignore `dry_run === true`,
   and should also clear state on `tavern_events.GENERATION_STOPPED`.
+- **Generation safe-frame lock: target selection**
+  - On `GENERATION_STARTED` (non-dry-run, non-quiet), the player excludes a *predicted* target message id:
+    - if `getLastMessageId()` is a `role:'user'` message, predict target = `last + 1` (assistant reply not created yet)
+    - otherwise predict target = `last`
+  - While generation is in progress, the **first** `MESSAGE_UPDATED(message_id)` is treated as authoritative and may retarget the lock to that message id (important for swipes/regens and timing).
+  - `MESSAGE_UPDATED` spam for the locked target is ignored to avoid constant parsing/index rebuild churn.
+  - On `GENERATION_ENDED` / `GENERATION_STOPPED`, exclusions are cleared and the playable index is rebuilt.
 - **`at` clause** is only valid as the final clause in `show`/`camera at`.
 - **Say-with-attrs emits two commands** — a `show` then a `dialogue`.
 - **`TransitionGroup`** keys sprites by `renderKey = sprite.id`. Re-showing the same character updates the existing DOM node; enter/leave hooks only fire for genuine additions/removals.
@@ -227,5 +244,10 @@ Regenerations/swipes: excludes the current (being-generated) message from histor
 - **`effectsDisabled`** = `prefersReducedMotion || motionMode === 'instant'` — zeros all transition durations.
 - Only the first fenced code block gets parse priority; later blocks are considered only in whole-message fallback.
 - **Speaker display** uses `displayedSpeaker` (a reactive ref inside `useDialogueReveal`), not a computed from the current frame. Three-way transition: speaker appears (fade in via `speakerFadeMs`), speaker disappears (fade out, then `displayedSpeaker` clears after `speakerFadeMs`), no change (instant update). Empty/missing speaker → `speakerRevealed = false`. There is no lead-in delay before typing — text reveal starts immediately.
+- **Autoplay + user actions**
+  - Autoplay is continuous across message boundaries (end of frames → next playable message).
+  - Autoplay idles (stays enabled) at end-of-chat and during generation lock.
+  - Stage click does **not** stop autoplay (it skips reveal / advances).
+  - Non-stage-click manual actions stop autoplay (transport buttons, jump-to-latest, message stepper, applying typed message id).
 
 Update this file when implemented behavior changes in a way an agent should know before editing.

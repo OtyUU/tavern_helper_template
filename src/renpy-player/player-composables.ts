@@ -214,9 +214,11 @@ export function useSpriteVisibilityTransitions(
 export function useAutoplay(
   frames: Ref<PlayerFrame[]>,
   frameIndex: Ref<number>,
+  canStartAutoplay: Ref<boolean>,
   canAutoAdvanceNow: Ref<boolean>,
   autoAdvanceDelayMs: Ref<number>,
   stepForward: () => void,
+  cursorKey: Ref<string>,
 ) {
   const isAutoplaying = ref(false);
   let pendingTimeout: number | null = null;
@@ -235,14 +237,13 @@ export function useAutoplay(
 
   function scheduleAdvance() {
     cancelPending();
+    if (!isAutoplaying.value) return;
     if (!canAutoAdvanceNow.value) return;
     pendingTimeout = window.setTimeout(() => {
       pendingTimeout = null;
       if (!isAutoplaying.value) return;
       stepForward();
-      if (isAutoplaying.value && canAutoAdvanceNow.value) {
-        scheduleAdvance();
-      }
+      if (isAutoplaying.value && canAutoAdvanceNow.value) scheduleAdvance();
     }, autoAdvanceDelayMs.value);
   }
 
@@ -251,7 +252,7 @@ export function useAutoplay(
       stopAutoplay();
       return;
     }
-    if (frames.value.length <= 1) return;
+    if (!canStartAutoplay.value) return;
     isAutoplaying.value = true;
     scheduleAdvance();
   }
@@ -262,11 +263,17 @@ export function useAutoplay(
       scheduleAdvance();
     } else {
       cancelPending();
-      if (frames.value.length > 0 && frameIndex.value >= frames.value.length - 1) {
-        stopAutoplay();
-      }
     }
   });
+
+  watch(
+    cursorKey,
+    () => {
+      if (!isAutoplaying.value) return;
+      cancelPending();
+      if (canAutoAdvanceNow.value) scheduleAdvance();
+    },
+  );
 
   watch(
     () => autoAdvanceDelayMs.value,
@@ -280,7 +287,7 @@ export function useAutoplay(
   watch(
     () => frames.value.length,
     (count) => {
-      if (count <= 1) {
+      if (count <= 0) {
         stopAutoplay();
       }
     },

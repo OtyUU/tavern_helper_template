@@ -112,6 +112,7 @@ export function useRenpyPlayerController() {
   const excludedPlayableMessageIds = ref<Set<number>>(new Set());
   const isGenerationInProgress = ref(false);
   const generationTargetMessageId = ref<number | null>(null);
+  const generationTargetConfirmed = ref(false);
 
   function cursorKey(messageId: number | null, frame: number): string {
     return `${messageId ?? 'none'}:${frame}`;
@@ -202,6 +203,18 @@ export function useRenpyPlayerController() {
     depth?: number;
   };
 
+  function predictGenerationTargetMessageId(): number | null {
+    const last = getLastMessageId();
+    if (last < 0) return null;
+
+    const lastMsg = getChatMessages(last)[0];
+    if (lastMsg?.role === 'user') {
+      return last + 1;
+    }
+
+    return last;
+  }
+
   function jumpToSafeFrameBefore(excludedMessageId: number) {
     const safeId =
       findPrevPlayableId(excludedMessageId) ??
@@ -255,37 +268,42 @@ export function useRenpyPlayerController() {
     }
 
     isGenerationInProgress.value = true;
+    generationTargetConfirmed.value = false;
 
     const previousTarget = generationTargetMessageId.value;
     if (previousTarget != null) {
       excludedPlayableMessageIds.value.delete(previousTarget);
     }
 
-    const target = getLastMessageId();
-    generationTargetMessageId.value = target >= 0 ? target : null;
+    const predictedTarget = predictGenerationTargetMessageId();
+    generationTargetMessageId.value = predictedTarget;
 
-    if (generationTargetMessageId.value == null) {
+    if (predictedTarget == null) {
       rebuildPlayableIndex();
       return;
     }
 
-    excludedPlayableMessageIds.value.add(generationTargetMessageId.value);
+    excludedPlayableMessageIds.value.add(predictedTarget);
     rebuildPlayableIndex();
 
-    const lockedId = generationTargetMessageId.value;
-    if (activeMessageId.value === lockedId || settings.value.preferredMessageId === lockedId) {
-      jumpToSafeFrameBefore(lockedId);
+    if (activeMessageId.value === predictedTarget || settings.value.preferredMessageId === predictedTarget) {
+      jumpToSafeFrameBefore(predictedTarget);
     }
   }
 
   function endGenerationLock(messageId?: number | null) {
     isGenerationInProgress.value = false;
+    generationTargetConfirmed.value = false;
 
-    const target = messageId ?? generationTargetMessageId.value;
+    const predictedOrLocked = generationTargetMessageId.value;
+    const targetFromEvent = messageId ?? null;
     generationTargetMessageId.value = null;
 
-    if (target != null) {
-      excludedPlayableMessageIds.value.delete(target);
+    if (targetFromEvent != null) {
+      excludedPlayableMessageIds.value.delete(targetFromEvent);
+    }
+    if (predictedOrLocked != null) {
+      excludedPlayableMessageIds.value.delete(predictedOrLocked);
     }
 
     rebuildPlayableIndex();
@@ -370,14 +388,18 @@ export function useRenpyPlayerController() {
       (frameIndex.value < frames.value.length - 1 || nextPlayableId.value !== null) &&
       !isBusy.value,
   );
-  const canToggleAutoplay = computed(() => frames.value.length > 1 && !isBusy.value);
+
+  const hasNextStep = computed(
+    () => hasFrames.value && (frameIndex.value < frames.value.length - 1 || nextPlayableId.value !== null),
+  );
 
   const canAutoAdvanceNow = computed(
     () =>
       hasFrames.value &&
       !isSceneTransitioning.value &&
       isFullyRevealed.value &&
-      frameIndex.value < frames.value.length - 1,
+      hasNextStep.value &&
+      !isGenerationInProgress.value,
   );
   const canSelectPreviousMessage = computed(() => prevPlayableId.value !== null);
   const canSelectNextMessage = computed(() => nextPlayableId.value !== null);
@@ -754,7 +776,7 @@ export function useRenpyPlayerController() {
     frameIndex.value = 0;
   }
 
-  function applyManualMessageId() {
+  function applyManualMessageIdInternal() {
     if (manualMessageId.value === null || Number.isNaN(manualMessageId.value)) {
       return;
     }
@@ -778,11 +800,11 @@ export function useRenpyPlayerController() {
     manualMessageId.value = nextValue === '' ? null : Number(nextValue);
   }
 
-  function nudgeManualMessageId(delta: number) {
+  function nudgeManualMessageIdInternal(delta: number) {
     const targetId = delta < 0 ? prevPlayableId.value : nextPlayableId.value;
     if (targetId == null) return;
     manualMessageId.value = targetId;
-    applyManualMessageId();
+    applyManualMessageIdInternal();
   }
 
   function setMotionModeForNav(targetIndex: number) {
@@ -796,13 +818,13 @@ export function useRenpyPlayerController() {
     isSceneTransitioning.value = false;
   }
 
-  function jumpToStart() {
+  function jumpToStartInternal() {
     setMotionModeForNav(0);
     cancelAllEffects();
     frameIndex.value = 0;
   }
 
-  function stepBackward() {
+  function stepBackwardInternal() {
     if (!hasFrames.value) return;
 
     if (frameIndex.value > 0) {
@@ -829,7 +851,7 @@ export function useRenpyPlayerController() {
     frameIndex.value = Number.MAX_SAFE_INTEGER;
   }
 
-  function stepForward() {
+  function stepForwardInternal() {
     if (isSceneTransitioning.value) {
       return;
     }
@@ -868,28 +890,60 @@ export function useRenpyPlayerController() {
       return;
     }
 
-    if (isAutoplaying.value) {
-      stopAutoplay();
-      return;
-    }
-
     if (isRevealing.value) {
       skipReveal();
       return;
     }
 
-    stepForward();
+    stepForwardInternal();
   }
 
   // ─── 4) Autoplay ──────────────────────────────────────────────────────────
 
+  const canToggleAutoplay = computed(() => {
+    if (isAutoplaying.value) return true;
+    return hasFrames.value && !isBusy.value && hasNextStep.value;
+  });
+
   const { isAutoplaying, stopAutoplay, toggleAutoplay } = useAutoplay(
     frames,
     frameIndex,
+    canToggleAutoplay,
     canAutoAdvanceNow,
     autoAdvanceDelayMs,
-    stepForward,
+    stepForwardInternal,
+    currentCursorKey,
   );
+
+  function jumpToStart() {
+    stopAutoplay();
+    jumpToStartInternal();
+  }
+
+  function stepBackward() {
+    stopAutoplay();
+    stepBackwardInternal();
+  }
+
+  function stepForward() {
+    stopAutoplay();
+    stepForwardInternal();
+  }
+
+  function useLatestPlayableUser() {
+    stopAutoplay();
+    useLatestPlayable();
+  }
+
+  function applyManualMessageId() {
+    stopAutoplay();
+    applyManualMessageIdInternal();
+  }
+
+  function nudgeManualMessageId(delta: number) {
+    stopAutoplay();
+    nudgeManualMessageIdInternal(delta);
+  }
 
   // ─── Cross-cutting watchers ───────────────────────────────────────────────
 
@@ -936,13 +990,39 @@ export function useRenpyPlayerController() {
         onMessageChanged(messageId);
       }).stop,
       eventOn(tavern_events.MESSAGE_UPDATED, (messageId: number) => {
-        if (
-          isGenerationInProgress.value &&
-          generationTargetMessageId.value != null &&
-          messageId === generationTargetMessageId.value
-        ) {
-          return;
+        if (isGenerationInProgress.value) {
+          const locked = generationTargetMessageId.value;
+
+          if (!generationTargetConfirmed.value) {
+            generationTargetConfirmed.value = true;
+
+            if (locked !== messageId) {
+              if (locked != null) {
+                excludedPlayableMessageIds.value.delete(locked);
+              }
+
+              generationTargetMessageId.value = messageId;
+              excludedPlayableMessageIds.value.add(messageId);
+              rebuildPlayableIndex();
+
+              if (
+                activeMessageId.value === messageId ||
+                settings.value.preferredMessageId === messageId
+              ) {
+                jumpToSafeFrameBefore(messageId);
+              }
+            }
+
+            if (generationTargetMessageId.value === messageId) {
+              return;
+            }
+          }
+
+          if (generationTargetMessageId.value != null && messageId === generationTargetMessageId.value) {
+            return;
+          }
         }
+
         rebuildPlayableIndex();
         onMessageChanged(messageId);
       }).stop,
@@ -1041,7 +1121,7 @@ export function useRenpyPlayerController() {
       onManualMessageInput,
       applyManualMessageId,
       nudgeManualMessageId,
-      useLatestPlayable,
+      useLatestPlayable: useLatestPlayableUser,
     },
 
     autoplay: {
