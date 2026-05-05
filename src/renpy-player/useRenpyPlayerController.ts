@@ -187,6 +187,110 @@ export function useRenpyPlayerController() {
   const prevPlayableId = computed(() => findPrevPlayableId(activeMessageId.value));
   const nextPlayableId = computed(() => findNextPlayableId(activeMessageId.value));
 
+  // ─── Phase 5: Generation safe-frame lock ─────────────────────────────────
+
+  type GenerationStartedOption = {
+    automatic_trigger?: boolean;
+    force_name2?: boolean;
+    quiet_prompt?: string;
+    quietToLoud?: boolean;
+    skipWIAN?: boolean;
+    force_chid?: number;
+    signal?: AbortSignal;
+    quietImage?: string;
+    quietName?: string;
+    depth?: number;
+  };
+
+  function jumpToSafeFrameBefore(excludedMessageId: number) {
+    const safeId =
+      findPrevPlayableId(excludedMessageId) ??
+      resolveNearestPlayableId(excludedMessageId);
+
+    if (safeId == null) {
+      pendingBridge.value = null;
+      pendingFrameTarget.value = null;
+      cancelAllEffects();
+      activeMessageId.value = null;
+      manualMessageId.value = null;
+      settings.value.preferredMessageId = null;
+      frameIndex.value = 0;
+      return;
+    }
+
+    if (activeMessageId.value === safeId && !excludedPlayableMessageIds.value.has(safeId)) {
+      return;
+    }
+
+    motionMode.value = 'instant';
+    pendingBridge.value = null;
+    cancelAllEffects();
+
+    const shouldGoLast = safeId < excludedMessageId;
+    pendingFrameTarget.value = shouldGoLast ? { kind: 'last' } : { kind: 'first' };
+
+    settings.value.preferredMessageId = safeId;
+    manualMessageId.value = safeId;
+    activeMessageId.value = safeId;
+
+    frameIndex.value = shouldGoLast ? Number.MAX_SAFE_INTEGER : 0;
+  }
+
+  function beginGenerationLock(
+    type?: string,
+    option?: GenerationStartedOption,
+    dryRun?: boolean,
+  ) {
+    if (dryRun) {
+      return;
+    }
+
+    if (
+      type === 'quiet' ||
+      option?.quiet_prompt ||
+      option?.quietImage ||
+      option?.quietName
+    ) {
+      return;
+    }
+
+    isGenerationInProgress.value = true;
+
+    const previousTarget = generationTargetMessageId.value;
+    if (previousTarget != null) {
+      excludedPlayableMessageIds.value.delete(previousTarget);
+    }
+
+    const target = getLastMessageId();
+    generationTargetMessageId.value = target >= 0 ? target : null;
+
+    if (generationTargetMessageId.value == null) {
+      rebuildPlayableIndex();
+      return;
+    }
+
+    excludedPlayableMessageIds.value.add(generationTargetMessageId.value);
+    rebuildPlayableIndex();
+
+    const lockedId = generationTargetMessageId.value;
+    if (activeMessageId.value === lockedId || settings.value.preferredMessageId === lockedId) {
+      jumpToSafeFrameBefore(lockedId);
+    }
+  }
+
+  function endGenerationLock(messageId?: number | null) {
+    isGenerationInProgress.value = false;
+
+    const target = messageId ?? generationTargetMessageId.value;
+    generationTargetMessageId.value = null;
+
+    if (target != null) {
+      excludedPlayableMessageIds.value.delete(target);
+    }
+
+    rebuildPlayableIndex();
+  }
+
   const characterNormalizationScales = computed(() => {
     const scales: Record<string, number> = {};
     for (const charId in characterNaturalHeights.value) {
@@ -577,6 +681,10 @@ export function useRenpyPlayerController() {
 
   function onMessageReceived(messageId: number) {
     if (settings.value.followLatestPlayable) {
+      if (excludedPlayableMessageIds.value.has(messageId)) {
+        return;
+      }
+
       const message = getChatMessages(messageId)[0];
       if (isMessagePlayable(message)) {
         settings.value.preferredMessageId = messageId;
@@ -828,8 +936,24 @@ export function useRenpyPlayerController() {
         onMessageChanged(messageId);
       }).stop,
       eventOn(tavern_events.MESSAGE_UPDATED, (messageId: number) => {
+        if (
+          isGenerationInProgress.value &&
+          generationTargetMessageId.value != null &&
+          messageId === generationTargetMessageId.value
+        ) {
+          return;
+        }
         rebuildPlayableIndex();
         onMessageChanged(messageId);
+      }).stop,
+      eventOn(tavern_events.GENERATION_STARTED, (type: string, option: any, dry_run: boolean) => {
+        beginGenerationLock(type, option as GenerationStartedOption, dry_run);
+      }).stop,
+      eventOn(tavern_events.GENERATION_ENDED, (messageId: number) => {
+        endGenerationLock(messageId);
+      }).stop,
+      eventOn(tavern_events.GENERATION_STOPPED, () => {
+        endGenerationLock(generationTargetMessageId.value);
       }).stop,
       eventOn(tavern_events.MESSAGE_DELETED, () => {
         fullSync();
@@ -854,6 +978,10 @@ export function useRenpyPlayerController() {
     clearReveal();
     clearTransitionTimeouts();
     clearSpriteVisibilityTransitions();
+
+    isGenerationInProgress.value = false;
+    generationTargetMessageId.value = null;
+    excludedPlayableMessageIds.value.clear();
   });
 
   // ─── Public API (grouped) ─────────────────────────────────────────────────

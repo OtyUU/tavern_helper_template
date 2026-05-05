@@ -58,6 +58,7 @@ Ambient globals — no import needed. Typed in `@types/function/` and `@types/if
 | `getScriptId()` | Unique ID string of this script. |
 | `eventOn(eventType, cb)` | Subscribe to an event. Returns `{ stop }`. |
 | `tavern_events` | Event name constants. Full catalog in `@types/iframe/event.d.ts`. |
+| `iframe_events` | Event name constants for helper-side `generate()` calls (not ST chat generation). |
 | `registerMacroLike(regex, replacer)` | Register a prompt macro. Returns `{ unregister }`. |
 
 **ChatMessage shape:** `{ message_id: number, name, role, is_hidden, message: string, data, extra }`
@@ -70,8 +71,23 @@ Ambient globals — no import needed. Typed in `@types/function/` and `@types/if
 | `MESSAGE_RECEIVED` | `(message_id: number, type: string) => void` |
 | `MESSAGE_EDITED` / `MESSAGE_UPDATED` / `MESSAGE_DELETED` / `MESSAGE_SWIPED` | `(message_id: number) => void` |
 | `MORE_MESSAGES_LOADED` | `() => void` |
-| `GENERATION_STARTED` | `(type: string) => void` |
-| `GENERATION_ENDED` | `() => void` |
+| `GENERATION_STARTED` | `(type: string, option: object, dry_run: boolean) => void` |
+| `GENERATION_STOPPED` | `() => void` |
+| `GENERATION_ENDED` | `(message_id: number) => void` |
+
+#### Important: `tavern_events.GENERATION_STARTED` includes dry runs
+
+SillyTavern emits `tavern_events.GENERATION_STARTED` not only for the visible assistant reply,
+but also for internal/background pipeline runs such as prompt building / token counting.
+Those runs can appear immediately after a normal generation ends and often have:
+
+- `dry_run: true`
+
+Player logic that wants "streaming message is incomplete" behavior (e.g., safe-frame lock)
+**must ignore `dry_run` generations**, otherwise the UI will incorrectly re-enter "generation in progress"
+after the visible reply is finished.
+
+Also note `GENERATION_STOPPED` is a distinct event (user abort) and should be treated as an "end" for lock cleanup.
 
 ## File Map
 
@@ -199,6 +215,10 @@ Regenerations/swipes: excludes the current (being-generated) message from histor
 - **Script module, not iframe UI.** No `index.html`, no tailwindcss, no scoped CSS.
 - **`klona()` is mandatory** before `insertOrAssignVariables()` or any Tavern Helper API receiving a reactive value.
 - **`ensurePlayerHost()`** must be called on `CHAT_CHANGED` — SillyTavern rebuilds the chat DOM.
+- **Generation events include dry runs.**
+  `tavern_events.GENERATION_STARTED(type, option, dry_run)` may fire for internal/background runs after a reply completes.
+  Any "generation lock" / "exclude incomplete message" logic must ignore `dry_run === true`,
+  and should also clear state on `tavern_events.GENERATION_STOPPED`.
 - **`at` clause** is only valid as the final clause in `show`/`camera at`.
 - **Say-with-attrs emits two commands** — a `show` then a `dialogue`.
 - **`TransitionGroup`** keys sprites by `renderKey = sprite.id`. Re-showing the same character updates the existing DOM node; enter/leave hooks only fire for genuine additions/removals.
