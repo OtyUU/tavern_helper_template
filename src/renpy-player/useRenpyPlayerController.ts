@@ -212,9 +212,10 @@ export function useRenpyPlayerController() {
     if (currentId != null && !Number.isNaN(currentId) && currentId > 0) {
       const allMessages = getChatMessages(`0-${currentId - 1}`);
       for (let i = allMessages.length - 1; i >= 0; i--) {
-        if (allMessages[i]?.message) {
-          history.push(allMessages[i].message);
-        }
+        const msg = allMessages[i];
+        if (!msg?.message) continue;
+        if (msg.is_hidden) continue;
+        history.push(msg.message);
       }
     }
 
