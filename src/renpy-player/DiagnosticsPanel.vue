@@ -6,6 +6,20 @@
     <div class="renpy-player__diagnostics-grid">
       <p><strong>Source:</strong> {{ controller.model.parsedScript.source }}</p>
       <p><strong>Max message id:</strong> {{ controller.model.maxMessageId }}</p>
+      <p><strong>Active message id:</strong> {{ controller.diagnostics.activeMessageId ?? 'none' }}</p>
+      <p><strong>Playable messages:</strong> {{ controller.diagnostics.playableMessageCount }}
+        <template v-if="controller.diagnostics.playableMessageRange">
+          ({{ controller.diagnostics.playableMessageRange.first }}–{{ controller.diagnostics.playableMessageRange.last }})
+        </template>
+      </p>
+      <p><strong>Prev playable id:</strong> {{ controller.diagnostics.prevPlayableId ?? 'none' }}</p>
+      <p><strong>Next playable id:</strong> {{ controller.diagnostics.nextPlayableId ?? 'none' }}</p>
+      <p><strong>Generation in progress:</strong> {{ controller.diagnostics.isGenerationInProgress }}</p>
+      <p v-if="controller.diagnostics.generationTargetMessageId !== null">
+        <strong>Generation target:</strong> {{ controller.diagnostics.generationTargetMessageId }}
+      </p>
+      <p><strong>Autoplay status:</strong> {{ controller.diagnostics.autoplayStatus }}</p>
+      <p><strong>Cursor key:</strong> {{ controller.diagnostics.currentCursorKey }}</p>
       <p><strong>Camera:</strong> {{ controller.scene.cameraDiagnosticsLabel }}</p>
       <template v-for="sprite in controller.model.currentFrame?.sprites" :key="sprite.id">
         <p><strong>Sprite {{ sprite.id }}:</strong></p>

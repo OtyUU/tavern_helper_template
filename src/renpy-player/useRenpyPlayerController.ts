@@ -89,6 +89,28 @@ export function useRenpyPlayerController() {
   const characterNaturalHeights = ref<Record<string, number>>({});
   const assetResolutionStatus = ref<Record<string, { resolved?: string; failed: string[] }>>({});
 
+  // ─── Phase 0 diagnostic state ─────────────────────────────────────────────
+
+  const activeMessageId = computed(() => currentMessage.value?.message_id ?? null);
+  const playableMessageIds = ref<number[]>([]);
+  const prevPlayableId = ref<number | null>(null);
+  const nextPlayableId = ref<number | null>(null);
+  const isGenerationInProgress = ref(false);
+  const generationTargetMessageId = ref<number | null>(null);
+
+  function cursorKey(messageId: number | null, frame: number): string {
+    return `${messageId ?? 'none'}:${frame}`;
+  }
+
+  const currentCursorKey = computed(() => cursorKey(activeMessageId.value, frameIndex.value));
+
+  const autoplayStatus = computed<'off' | 'active' | 'idle-end' | 'idle-generation'>(() => {
+    if (!isAutoplaying.value) return 'off';
+    if (isGenerationInProgress.value) return 'idle-generation';
+    if (canAutoAdvanceNow.value) return 'active';
+    return 'idle-end';
+  });
+
   const characterNormalizationScales = computed(() => {
     const scales: Record<string, number> = {};
     for (const charId in characterNaturalHeights.value) {
@@ -715,6 +737,22 @@ export function useRenpyPlayerController() {
       getSpriteNormalizationScale,
       assetResolutionStatus,
       onAssetResolutionStatus,
+      // Phase 0 instrumentation:
+      activeMessageId,
+      playableMessageIds: readonly(playableMessageIds),
+      playableMessageCount: computed(() => playableMessageIds.value.length),
+      playableMessageRange: computed(() => {
+        const ids = playableMessageIds.value;
+        if (ids.length === 0) return null;
+        return { first: ids[0], last: ids[ids.length - 1] };
+      }),
+      prevPlayableId: readonly(prevPlayableId),
+      nextPlayableId: readonly(nextPlayableId),
+      isGenerationInProgress: readonly(isGenerationInProgress),
+      generationTargetMessageId: readonly(generationTargetMessageId),
+      autoplayStatus,
+      currentCursorKey,
+      cursorKey,
     },
   });
 }
