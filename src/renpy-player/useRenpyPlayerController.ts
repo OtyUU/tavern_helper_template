@@ -82,7 +82,10 @@ export function useRenpyPlayerController() {
 
   const lifecycleStopList: Array<() => void> = [];
 
-  const maxMessageId = computed(() => getLastMessageId());
+  const maxMessageId = computed(() => {
+    void historyTrigger.value;
+    return getLastMessageId();
+  });
   const characterNaturalHeights = ref<Record<string, number>>({});
   const assetResolutionStatus = ref<Record<string, { resolved?: string; failed: string[] }>>({});
 
