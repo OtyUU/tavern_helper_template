@@ -29,6 +29,12 @@ export function useRenpyPlayerController() {
   // (Cursor coordinate 2/2 is frameIndex.)
   const activeMessageId = ref<number | null>(settings.value.preferredMessageId ?? null);
 
+  type PendingBridge = { targetKey: string; prevFrame: PlayerFrame };
+  const pendingBridge = ref<PendingBridge | null>(null);
+
+  type PendingFrameTarget = null | { kind: 'first' } | { kind: 'last' };
+  const pendingFrameTarget = ref<PendingFrameTarget>(null);
+
   // currentMessage is derived (not stored) to allow cursor-based navigation later.
   // historyTrigger forces recomputation because getChatMessages() is not reactive.
   const currentMessage = computed<ChatMessage | null>(() => {
@@ -251,9 +257,14 @@ export function useRenpyPlayerController() {
   const hasFrames = computed(() => frames.value.length > 0);
   const isBusy = computed(() => isSceneTransitioning.value);
   const canRestart = computed(() => hasFrames.value && frameIndex.value > 0);
-  const canStepBack = computed(() => hasFrames.value && frameIndex.value > 0);
+  const canStepBack = computed(
+    () => hasFrames.value && (frameIndex.value > 0 || prevPlayableId.value !== null),
+  );
   const canStepForward = computed(
-    () => hasFrames.value && frameIndex.value < frames.value.length - 1 && !isBusy.value,
+    () =>
+      hasFrames.value &&
+      (frameIndex.value < frames.value.length - 1 || nextPlayableId.value !== null) &&
+      !isBusy.value,
   );
   const canToggleAutoplay = computed(() => frames.value.length > 1 && !isBusy.value);
 
@@ -264,13 +275,8 @@ export function useRenpyPlayerController() {
       isFullyRevealed.value &&
       frameIndex.value < frames.value.length - 1,
   );
-  const canSelectPreviousMessage = computed(() => (manualMessageId.value ?? 0) > 0);
-  const canSelectNextMessage = computed(() => {
-    if (manualMessageId.value === null || Number.isNaN(manualMessageId.value)) {
-      return false;
-    }
-    return manualMessageId.value < maxMessageId.value;
-  });
+  const canSelectPreviousMessage = computed(() => prevPlayableId.value !== null);
+  const canSelectNextMessage = computed(() => nextPlayableId.value !== null);
 
   // ─── Stage geometry + presentation computeds ──────────────────────────────
 
@@ -486,7 +492,22 @@ export function useRenpyPlayerController() {
   watch(
     () => currentFrame.value,
     (nextFrame, previousFrame) => {
-      applyFrame(nextFrame, previousFrame ?? null);
+      const bridge = pendingBridge.value;
+      const nextKey =
+        nextFrame && activeMessageId.value != null
+          ? cursorKey(activeMessageId.value, nextFrame.index)
+          : '';
+
+      const effectivePrev =
+        bridge && bridge.targetKey === nextKey
+          ? bridge.prevFrame
+          : (previousFrame ?? null);
+
+      if (bridge && bridge.targetKey === nextKey) {
+        pendingBridge.value = null;
+      }
+
+      applyFrame(nextFrame, effectivePrev);
     },
     { immediate: true },
   );
@@ -592,6 +613,26 @@ export function useRenpyPlayerController() {
     }
   }
 
+  function resolveNearestPlayableId(requestedId: number): number | null {
+    const ids = playableMessageIds.value;
+    if (ids.length === 0) return null;
+
+    let left = 0;
+    let right = ids.length - 1;
+
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      const candidate = ids[mid];
+      if (candidate === requestedId) return candidate;
+      if (candidate < requestedId) left = mid + 1;
+      else right = mid - 1;
+    }
+
+    const prev = right >= 0 ? ids[right] : null;
+    const next = left < ids.length ? ids[left] : null;
+    return prev ?? next;
+  }
+
   function useLatestPlayable() {
     settings.value.followLatestPlayable = true;
     fullSync();
@@ -609,11 +650,19 @@ export function useRenpyPlayerController() {
     if (manualMessageId.value === null || Number.isNaN(manualMessageId.value)) {
       return;
     }
-    manualMessageId.value = clampNumber(Math.round(manualMessageId.value), 0, maxMessageId.value);
+    manualMessageId.value = clampNumber(
+      Math.round(manualMessageId.value),
+      0,
+      maxMessageId.value,
+    );
+
+    const targetId = resolveNearestPlayableId(manualMessageId.value);
+    if (targetId === null) return;
+    manualMessageId.value = targetId;
 
     motionMode.value = 'instant';
 
-    selectMessage(manualMessageId.value);
+    selectMessage(targetId);
   }
 
   function onManualMessageInput(event: Event) {
@@ -622,8 +671,9 @@ export function useRenpyPlayerController() {
   }
 
   function nudgeManualMessageId(delta: number) {
-    const baseValue = manualMessageId.value ?? settings.value.preferredMessageId ?? 0;
-    manualMessageId.value = clampNumber(Math.round(baseValue) + delta, 0, maxMessageId.value);
+    const targetId = delta < 0 ? prevPlayableId.value : nextPlayableId.value;
+    if (targetId == null) return;
+    manualMessageId.value = targetId;
     applyManualMessageId();
   }
 
@@ -645,19 +695,64 @@ export function useRenpyPlayerController() {
   }
 
   function stepBackward() {
-    const target = Math.max(0, frameIndex.value - 1);
-    setMotionModeForNav(target);
+    if (!hasFrames.value) return;
+
+    if (frameIndex.value > 0) {
+      const target = Math.max(0, frameIndex.value - 1);
+      setMotionModeForNav(target);
+      cancelAllEffects();
+      frameIndex.value = target;
+      return;
+    }
+
+    const prevId = prevPlayableId.value;
+    if (prevId == null) {
+      return;
+    }
+
+    motionMode.value = 'instant';
     cancelAllEffects();
-    frameIndex.value = target;
+
+    pendingFrameTarget.value = { kind: 'last' };
+    settings.value.preferredMessageId = prevId;
+    manualMessageId.value = prevId;
+    activeMessageId.value = prevId;
+
+    frameIndex.value = Number.MAX_SAFE_INTEGER;
   }
 
   function stepForward() {
     if (isSceneTransitioning.value) {
       return;
     }
-    const target = Math.min(frames.value.length - 1, frameIndex.value + 1);
-    setMotionModeForNav(target);
-    frameIndex.value = target;
+    if (!hasFrames.value) return;
+
+    if (frameIndex.value < frames.value.length - 1) {
+      const target = Math.min(frames.value.length - 1, frameIndex.value + 1);
+      setMotionModeForNav(target);
+      frameIndex.value = target;
+      return;
+    }
+
+    const nextId = nextPlayableId.value;
+    if (nextId == null) {
+      return;
+    }
+
+    motionMode.value = 'normal';
+
+    const prevFrame = currentFrame.value;
+    if (prevFrame) {
+      pendingBridge.value = {
+        targetKey: cursorKey(nextId, 0),
+        prevFrame,
+      };
+    }
+
+    settings.value.preferredMessageId = nextId;
+    manualMessageId.value = nextId;
+    activeMessageId.value = nextId;
+    frameIndex.value = 0;
   }
 
   function onStageClick() {
@@ -693,7 +788,22 @@ export function useRenpyPlayerController() {
   watch(
     frames,
     nextFrames => {
-      frameIndex.value = nextFrames.length === 0 ? 0 : Math.min(frameIndex.value, nextFrames.length - 1);
+      if (pendingFrameTarget.value?.kind === 'last') {
+        frameIndex.value = nextFrames.length === 0 ? 0 : nextFrames.length - 1;
+        pendingFrameTarget.value = null;
+        return;
+      }
+
+      if (pendingFrameTarget.value?.kind === 'first') {
+        frameIndex.value = 0;
+        pendingFrameTarget.value = null;
+        return;
+      }
+
+      frameIndex.value =
+        nextFrames.length === 0
+          ? 0
+          : Math.min(frameIndex.value, nextFrames.length - 1);
     },
     { immediate: true },
   );
