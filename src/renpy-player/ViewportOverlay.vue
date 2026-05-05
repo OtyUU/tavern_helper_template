@@ -14,7 +14,7 @@
             class="renpy-player__speaker"
             :class="controller.dialogue.speakerRevealed ? 'renpy-player__speaker--visible' : 'renpy-player__speaker--hidden'"
           >{{ controller.dialogue.displayedSpeaker }}</div>
-          <div class="renpy-player__text" :key="controller.model.currentFrame?.index"><span
+          <div class="renpy-player__text" :key="`${controller.selection.manualMessageId ?? 'none'}:${controller.model.currentFrame?.index ?? 'none'}`"><span
             v-for="(grapheme, i) in controller.dialogue.graphemes"
             :key="i"
             class="renpy-player__char"

@@ -551,9 +551,8 @@ export function useDialogueReveal(
   let trackedPrevFrame: PlayerFrame | null = null;
 
   watch(
-    () => currentFrame.value?.index ?? -1,
-    () => {
-      const nextFrame = currentFrame.value;
+    () => currentFrame.value,
+    (nextFrame, _prev) => {
       const prevFrame = trackedPrevFrame;
       trackedPrevFrame = nextFrame ?? null;
 
