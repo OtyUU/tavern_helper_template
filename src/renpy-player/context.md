@@ -250,4 +250,13 @@ Regenerations/swipes: excludes the current (being-generated) message from histor
   - Stage click does **not** stop autoplay (it skips reveal / advances).
   - Non-stage-click manual actions stop autoplay (transport buttons, jump-to-latest, message stepper, applying typed message id).
 
+- **Follow-latest persistence (important)**:
+  - `followLatestPlayable` is **not** disabled by manual message selection (stepper / typed message id).
+  - When `followLatestPlayable` is enabled and a **new playable message** arrives, the viewport **snaps forward automatically** to the newest playable message.
+  - The snap uses the same **seamless forward bridge** behavior as cross-message step-forward (normal motion; no forced instant mode unless reduced-motion/instant is active).
+
+- **Message ID input UX**:
+  - The message-id input (`manualMessageId`) is *decoupled* from playback; **typing** does not change the active message or restart dialogue reveal.
+  - Applying the jump happens on **blur**, **change**, or **Enter**.
+
 Update this file when implemented behavior changes in a way an agent should know before editing.

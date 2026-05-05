@@ -14,7 +14,12 @@
             class="renpy-player__speaker"
             :class="controller.dialogue.speakerRevealed ? 'renpy-player__speaker--visible' : 'renpy-player__speaker--hidden'"
           >{{ controller.dialogue.displayedSpeaker }}</div>
-          <div class="renpy-player__text" :key="`${controller.selection.manualMessageId ?? 'none'}:${controller.model.currentFrame?.index ?? 'none'}`"><span
+          <!-- Key must be based on the *active* cursor, not the user's in-progress input.
+               Otherwise typing into the message-id box can remount this block and restart reveal. -->
+          <div
+            class="renpy-player__text"
+            :key="`${controller.diagnostics.activeMessageId ?? 'none'}:${controller.model.currentFrame?.index ?? 'none'}`"
+          ><span
             v-for="(grapheme, i) in controller.dialogue.graphemes"
             :key="i"
             class="renpy-player__char"
@@ -88,6 +93,7 @@
                 @click.stop
                 @input="controller.selection.onManualMessageInput"
                 @change="controller.selection.applyManualMessageId"
+                @keydown.enter.prevent="controller.selection.applyManualMessageId"
                 @blur="controller.selection.applyManualMessageId"
               />
               <button
