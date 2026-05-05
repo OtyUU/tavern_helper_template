@@ -668,18 +668,23 @@ export function useRenpyPlayerController() {
 
   // ─── Actions (selection, transport) ───────────────────────────────────────
 
-  function fullSync(options: { rebuildIndex?: boolean } = {}) {
+  function fullSync(
+    options: { rebuildIndex?: boolean; forceMessageId?: number | null } = {},
+  ) {
     if (options.rebuildIndex !== false) {
       rebuildPlayableIndex();
     }
 
     historyTrigger.value++;
 
-    const messageId = settings.value.followLatestPlayable
-      ? (playableMessageIds.value.length > 0
-        ? playableMessageIds.value[playableMessageIds.value.length - 1]
-        : null)
-      : settings.value.preferredMessageId;
+    const messageId =
+      'forceMessageId' in options
+        ? (options.forceMessageId ?? null)
+        : (settings.value.followLatestPlayable
+          ? (playableMessageIds.value.length > 0
+            ? playableMessageIds.value[playableMessageIds.value.length - 1]
+            : null)
+          : settings.value.preferredMessageId);
 
     const previousActiveId = activeMessageId.value;
 
@@ -708,16 +713,36 @@ export function useRenpyPlayerController() {
       }
 
       const message = getChatMessages(messageId)[0];
-      if (isMessagePlayable(message)) {
-        settings.value.preferredMessageId = messageId;
-        manualMessageId.value = messageId;
-        const previousActiveId = activeMessageId.value;
-        activeMessageId.value = messageId;
-        if (messageId !== previousActiveId) {
-          frameIndex.value = 0;
+      if (!isMessagePlayable(message)) return;
+
+      const latestPlayable =
+        playableMessageIds.value.length > 0
+          ? playableMessageIds.value[playableMessageIds.value.length - 1]
+          : messageId;
+      const targetId = latestPlayable ?? messageId;
+
+      const previousActiveId = activeMessageId.value;
+
+      if (targetId !== previousActiveId) {
+        motionMode.value = 'normal';
+
+        const prevFrame = currentFrame.value;
+        if (prevFrame) {
+          pendingBridge.value = {
+            targetKey: cursorKey(targetId, 0),
+            prevFrame,
+          };
         }
-        return;
       }
+
+      settings.value.preferredMessageId = targetId;
+      manualMessageId.value = targetId;
+      activeMessageId.value = targetId;
+
+      if (targetId !== previousActiveId) {
+        frameIndex.value = 0;
+      }
+
       return;
     }
 
@@ -770,9 +795,7 @@ export function useRenpyPlayerController() {
   }
 
   function selectMessage(messageId: number) {
-    settings.value.followLatestPlayable = false;
-    settings.value.preferredMessageId = messageId;
-    fullSync();
+    fullSync({ forceMessageId: messageId });
     frameIndex.value = 0;
   }
 
