@@ -25,7 +25,18 @@ export function useRenpyPlayerController() {
 
   // ─── Core derived model ───────────────────────────────────────────────────
 
-  const currentMessage = ref<ChatMessage | null>(null);
+  // Cursor coordinate 1/2: which message we're playing.
+  // (Cursor coordinate 2/2 is frameIndex.)
+  const activeMessageId = ref<number | null>(settings.value.preferredMessageId ?? null);
+
+  // currentMessage is derived (not stored) to allow cursor-based navigation later.
+  // historyTrigger forces recomputation because getChatMessages() is not reactive.
+  const currentMessage = computed<ChatMessage | null>(() => {
+    void historyTrigger.value;
+    const id = activeMessageId.value;
+    if (id == null) return null;
+    return getChatMessages(id)[0] ?? null;
+  });
 
   // historyTrigger forces recomputation because getChatMessages() is not
   // reactive.  fullSync() increments it on chat events.
@@ -91,7 +102,6 @@ export function useRenpyPlayerController() {
 
   // ─── Phase 0 diagnostic state ─────────────────────────────────────────────
 
-  const activeMessageId = computed(() => currentMessage.value?.message_id ?? null);
   const playableMessageIds = ref<number[]>([]);
   const excludedPlayableMessageIds = ref<Set<number>>(new Set());
   const isGenerationInProgress = ref(false);
@@ -510,41 +520,50 @@ export function useRenpyPlayerController() {
 
   // ─── Actions (selection, transport) ───────────────────────────────────────
 
-  function findLatestPlayableMessageId(): number | null {
-    const lastId = getLastMessageId();
-    if (lastId < 0) return null;
-    const allMessages = getChatMessages(`0-${lastId}`);
-    for (let i = allMessages.length - 1; i >= 0; i--) {
-      const message = allMessages[i];
-      if (message && parseScriptFromMessage(message.message).commands.length > 0) {
-        return message.message_id;
-      }
+  function fullSync(options: { rebuildIndex?: boolean } = {}) {
+    if (options.rebuildIndex !== false) {
+      rebuildPlayableIndex();
     }
-    return null;
-  }
 
-  function fullSync() {
     historyTrigger.value++;
-    const messageId = settings.value.followLatestPlayable ? findLatestPlayableMessageId() : settings.value.preferredMessageId;
+
+    const messageId = settings.value.followLatestPlayable
+      ? (playableMessageIds.value.length > 0
+        ? playableMessageIds.value[playableMessageIds.value.length - 1]
+        : null)
+      : settings.value.preferredMessageId;
+
+    const previousActiveId = activeMessageId.value;
+
     settings.value.preferredMessageId = messageId;
     manualMessageId.value = messageId;
-    currentMessage.value = messageId === null ? null : getChatMessages(messageId)[0] ?? null;
+    activeMessageId.value = messageId;
+
+    // Preserve prior behavior: switching messages starts from frame 0.
+    // (But edits/refreshes of the same message no longer forcibly reset.)
+    if (messageId !== previousActiveId) {
+      frameIndex.value = 0;
+    }
   }
 
   function refreshCurrentMessageOnly() {
-    const id = currentMessage.value?.message_id;
-    if (id != null) {
-      currentMessage.value = getChatMessages(id)[0] ?? null;
+    // currentMessage is computed; bump the trigger to force re-read.
+    if (activeMessageId.value != null) {
+      historyTrigger.value++;
     }
   }
 
   function onMessageReceived(messageId: number) {
     if (settings.value.followLatestPlayable) {
       const message = getChatMessages(messageId)[0];
-      if (message && parseScriptFromMessage(message.message).commands.length > 0) {
+      if (isMessagePlayable(message)) {
         settings.value.preferredMessageId = messageId;
         manualMessageId.value = messageId;
-        currentMessage.value = message;
+        const previousActiveId = activeMessageId.value;
+        activeMessageId.value = messageId;
+        if (messageId !== previousActiveId) {
+          frameIndex.value = 0;
+        }
         return;
       }
       return;
@@ -555,11 +574,11 @@ export function useRenpyPlayerController() {
       return;
     }
 
-    fullSync();
+    fullSync({ rebuildIndex: false });
   }
 
   function onMessageChanged(messageId: number) {
-    const currentId = currentMessage.value?.message_id;
+    const currentId = activeMessageId.value;
 
     if (currentId === messageId) {
       refreshCurrentMessageOnly();
@@ -567,7 +586,7 @@ export function useRenpyPlayerController() {
     }
 
     if (currentId != null && messageId < currentId) {
-      fullSync();
+      fullSync({ rebuildIndex: false });
       return;
     }
   }
@@ -671,21 +690,6 @@ export function useRenpyPlayerController() {
   // ─── Cross-cutting watchers ───────────────────────────────────────────────
 
   watch(
-    () => [currentMessage.value?.message_id ?? null, currentMessage.value?.message ?? ''],
-    (nextSelection, previousSelection) => {
-      if (!previousSelection) {
-        return;
-      }
-
-      const [nextMessageId, nextMessageText] = nextSelection;
-      const [previousMessageId, previousMessageText] = previousSelection;
-      if (nextMessageId !== previousMessageId || nextMessageText !== previousMessageText) {
-        frameIndex.value = 0;
-      }
-    },
-  );
-
-  watch(
     frames,
     nextFrames => {
       frameIndex.value = nextFrames.length === 0 ? 0 : Math.min(frameIndex.value, nextFrames.length - 1);
@@ -698,12 +702,10 @@ export function useRenpyPlayerController() {
   onMounted(() => {
     setupReducedMotion();
 
-    rebuildPlayableIndex();
     fullSync();
 
     lifecycleStopList.push(
       eventOn(tavern_events.CHAT_CHANGED, () => {
-        rebuildPlayableIndex();
         fullSync();
       }).stop,
       eventOn(tavern_events.MESSAGE_RECEIVED, (messageId: number) => {
@@ -719,7 +721,6 @@ export function useRenpyPlayerController() {
         onMessageChanged(messageId);
       }).stop,
       eventOn(tavern_events.MESSAGE_DELETED, () => {
-        rebuildPlayableIndex();
         fullSync();
       }).stop,
       eventOn(tavern_events.MESSAGE_SWIPED, (messageId: number) => {
@@ -727,7 +728,6 @@ export function useRenpyPlayerController() {
         onMessageChanged(messageId);
       }).stop,
       eventOn(tavern_events.MORE_MESSAGES_LOADED, () => {
-        rebuildPlayableIndex();
         fullSync();
       }).stop,
     );
@@ -820,7 +820,7 @@ export function useRenpyPlayerController() {
       assetResolutionStatus,
       onAssetResolutionStatus,
       // Phase 0 instrumentation:
-      activeMessageId,
+      activeMessageId: readonly(activeMessageId),
       playableMessageIds: readonly(playableMessageIds),
       playableMessageCount: computed(() => playableMessageIds.value.length),
       playableMessageRange: computed(() => {
