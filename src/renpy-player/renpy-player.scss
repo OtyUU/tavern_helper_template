@@ -174,12 +174,14 @@
 }
 
 .renpy-player__scene-fade {
+  opacity: 0;
   position: absolute;
   inset: 0;
   z-index: 10;
   background: #000;
   pointer-events: none;
   animation: renpy-scene-fade ease-in-out;
+  animation-fill-mode: both;
 }
 
 @keyframes renpy-scene-fade {
