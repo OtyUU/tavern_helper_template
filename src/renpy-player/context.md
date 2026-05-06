@@ -43,6 +43,7 @@ Renders a Ren'Py-like VN viewport inside the SillyTavern chat UI from LLM-produc
 |---|---|
 | `CHAT_CHANGED` | `(chat_file_name: string) => void` |
 | `MESSAGE_RECEIVED` | `(message_id: number, type: string) => void` |
+| `MESSAGE_SENT` | `(message_id: number) => void` |
 | `MESSAGE_EDITED` / `MESSAGE_UPDATED` / `MESSAGE_DELETED` / `MESSAGE_SWIPED` | `(message_id: number) => void` |
 | `MORE_MESSAGES_LOADED` | `() => void` |
 | `GENERATION_STARTED` | `(type: string, option: object, dry_run: boolean) => void` |
@@ -63,7 +64,7 @@ Renders a Ren'Py-like VN viewport inside the SillyTavern chat UI from LLM-produc
 | `SmartImage.vue` | Candidate waterfall loading, swap crossfade, emits `resolved` (with `naturalWidth`/`naturalHeight`) and `resolutionStatus` |
 | `DiagnosticsPanel.vue` | `<details>` diagnostics UI |
 | `SettingsPanel.vue` | Settings UI only |
-| `useRenpyPlayerController.ts` | Orchestration: store wiring, playable-index, frame/message selection, stage geometry, generation lock, lifecycle, event handlers. Exposes grouped API: `model`, `stage`, `scene`, `dialogue`, `transport`, `selection`, `autoplay`, `diagnostics` |
+| `useRenpyPlayerController.ts` | Orchestration: store wiring, playable-index, frame/message selection, stage geometry, generation lock, lifecycle, event handlers. Exposes grouped API: `model`, `stage`, `scene`, `dialogue`, `transport`, `selection`, `autoplay`, `diagnostics`. All settings mutations go through `updateSettings(draft => { ... })` which `klona()`s before writing. |
 | `player-composables.ts` | `useScenePresentation`, `useSpriteVisibilityTransitions`, `useDialogueReveal`, `useAutoplay`, `useReducedMotion` |
 | `player-context.ts` | `InjectionKey` + `useRenpyPlayer()` inject helper |
 | `parser.ts` | Grammar, token resolution, `StageState`, `buildFrames()`, `getInitialState()` |
@@ -166,6 +167,14 @@ stageHeight = 480
 
 ## Controller Architecture
 
+### `updateSettings(draft => { ... })`
+The **only** way controller code mutates `settings.value`. Clones via `klona()`, runs the updater on the draft, then assigns back. All direct `settings.value.x = ...` assignments have been replaced with this pattern. Never assign to `settings.value` properties directly.
+
+### Event Handler Routing
+`MESSAGE_EDITED`, `MESSAGE_UPDATED`, and `MESSAGE_SWIPED` all go through `handleMessageModified(messageId, eventType)`. When `eventType === 'MESSAGE_UPDATED'` and generation is in progress, it delegates to `handleMessageUpdatedDuringGeneration(messageId)` for lock-confirm logic; otherwise it calls `rebuildPlayableIndex()` + `onMessageChanged(messageId)`.
+
+`MESSAGE_RECEIVED` and `MESSAGE_SENT` follow the same viewport switching pattern: both check `followLatestPlayable`, validate message playability, rebuild the playable index, and switch viewport to the latest playable message with smooth transitions. `MESSAGE_SENT` provides immediate visual feedback when users send Ren'Py commands, mirroring the behavior of AI-generated messages.
+
 ### Sync Paths (two tiers)
 - **`fullSync(options?)`**: rebuilds playable index, bumps `historyTrigger`, resolves and sets `activeMessageId`/`manualMessageId`/`preferredMessageId`. Used on `CHAT_CHANGED`, `MESSAGE_DELETED`, `MORE_MESSAGES_LOADED`, and initial mount.
 - **`refreshCurrentMessageOnly()`**: bumps `historyTrigger` only, no index rebuild. Used for in-place edits/updates of the current message.
@@ -222,7 +231,7 @@ Regenerations/swipes: `activeGenerationType` (tracked via `GENERATION_STARTED` /
 ## Sharp Edges
 
 - **Script module, not iframe UI.** No `index.html`, no Tailwind, no scoped CSS.
-- **`klona()` is mandatory** before `insertOrAssignVariables()` or any Tavern Helper API receiving a reactive value.
+- **`klona()` is mandatory** before `insertOrAssignVariables()` or any Tavern Helper API receiving a reactive value. Within the controller, always use `updateSettings(draft => { ... })` instead of direct `settings.value` property assignment.
 - **`ensurePlayerHost()`** must be called on `CHAT_CHANGED` — SillyTavern rebuilds the chat DOM.
 - **`source:'message'`** is returned when `ignoredLines.length > 0` even if `commands.length === 0`.
 - **`flush()` is both read and clear** — do not call it just for its side effect without capturing the return value.

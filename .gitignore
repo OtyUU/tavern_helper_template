@@ -14,3 +14,5 @@ components.d.ts
 
 # Build output
 dist/
+
+.kiro

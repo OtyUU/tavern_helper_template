@@ -785,6 +785,70 @@ export function useRenpyPlayerController() {
     fullSync({ rebuildIndex: false });
   }
 
+  /**
+   * Handles MESSAGE_SENT events to automatically switch viewport when users send playable messages.
+   * 
+   * This function mirrors the logic of onMessageReceived() but is specifically designed for
+   * user-initiated messages. It respects the followLatestPlayable setting and generation lock
+   * exclusions, providing immediate visual feedback when users send Ren'Py commands.
+   * 
+   * @param messageId - The ID of the message that was sent by the user
+   */
+  function onMessageSent(messageId: number): void {
+    // Early return if auto-follow is disabled
+    if (!settings.value.followLatestPlayable) {
+      return;
+    }
+
+    // Early return if message is excluded (e.g., during generation lock)
+    if (excludedPlayableMessageIds.value.has(messageId)) {
+      return;
+    }
+
+    // Retrieve and validate the message
+    const message = getChatMessages(messageId)[0];
+    if (!isMessagePlayable(message)) {
+      return;
+    }
+
+    // Rebuild index to include the newly sent message
+    rebuildPlayableIndex();
+
+    // Determine the target message (latest playable)
+    const latestPlayable =
+      playableMessageIds.value.length > 0
+        ? playableMessageIds.value[playableMessageIds.value.length - 1]
+        : messageId;
+    const targetId = latestPlayable ?? messageId;
+
+    const previousActiveId = activeMessageId.value;
+
+    // Only create bridge and set motion mode if actually changing messages
+    if (targetId !== previousActiveId) {
+      motionMode.value = 'normal';
+
+      const prevFrame = currentFrame.value;
+      if (prevFrame) {
+        pendingBridge.value = {
+          targetKey: cursorKey(targetId, 0),
+          prevFrame,
+        };
+      }
+    }
+
+    // Update all controller state
+    updateSettings(draft => {
+      draft.preferredMessageId = targetId;
+    });
+    manualMessageId.value = targetId;
+    activeMessageId.value = targetId;
+
+    // Reset to first frame if changing messages
+    if (targetId !== previousActiveId) {
+      frameIndex.value = 0;
+    }
+  }
+
   function onMessageChanged(messageId: number) {
     const currentId = activeMessageId.value;
 
@@ -1123,6 +1187,15 @@ export function useRenpyPlayerController() {
       eventOn(tavern_events.MESSAGE_RECEIVED, (messageId: number) => {
         rebuildPlayableIndex();
         onMessageReceived(messageId);
+      }).stop,
+      eventOn(tavern_events.MESSAGE_SENT, (messageId: number) => {
+        try {
+          console.info(`[renpy-player] Message MESSAGE_SENT: ${messageId}`);
+          rebuildPlayableIndex();
+          onMessageSent(messageId);
+        } catch (error) {
+          console.error(`[renpy-player] Error handling MESSAGE_SENT for message ${messageId}:`, error);
+        }
       }).stop,
       eventOn(tavern_events.MESSAGE_EDITED, (messageId: number) => {
         handleMessageModified(messageId, 'MESSAGE_EDITED');
