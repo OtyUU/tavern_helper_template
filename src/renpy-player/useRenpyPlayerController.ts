@@ -113,6 +113,7 @@ export function useRenpyPlayerController() {
     isSceneTransitioning,
     prefersReducedMotion,
     effectsDisabled,
+    bus,
   );
 
   // ─── 3) Scene presentation ────────────────────────────────────────────────
@@ -123,12 +124,17 @@ export function useRenpyPlayerController() {
     previousDisplayedSprites,
     clearTransitionTimeouts,
     applyFrame,
+    setCameraTransformElement,
+    setBackgroundElement,
+    trackSpritePositionTransitions,
   } = useScenePresentation(
     settings,
     isSceneTransitioning,
     prepareSpriteVisibilityEffects,
     effectsDisabled,
     bus,
+    prefersReducedMotion,
+    computed(() => settings.value.cameraTransitionMs),
   );
 
   const lifecycleStopList: Array<() => void> = [];
@@ -1315,6 +1321,9 @@ export function useRenpyPlayerController() {
       onSpriteEnter,
       onSpriteLeave,
       onSpriteResolved,
+      setCameraTransformElement,
+      setBackgroundElement,
+      trackSpritePositionTransitions,
     },
 
     dialogue: {

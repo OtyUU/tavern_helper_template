@@ -49,6 +49,7 @@ export function useSpriteVisibilityTransitions(
   isSceneTransitioning: Ref<boolean>,
   prefersReducedMotion: Ref<boolean>,
   effectsDisabled: Ref<boolean>,
+  bus: { register: (cancel: () => void) => () => void },
 ) {
   const spriteVisibilityAnimations = new WeakMap<Element, Animation>();
   const activeSpriteVisibilityAnimations = new Set<Animation>();
@@ -148,8 +149,21 @@ export function useSpriteVisibilityTransitions(
       );
       spriteVisibilityAnimations.set(node, animation);
       activeSpriteVisibilityAnimations.add(animation);
-      animation.addEventListener('finish', complete, { once: true });
-      animation.addEventListener('cancel', complete, { once: true });
+      
+      // Register cancellation with TransitionBus (Req 1.2, 6.2, 8.2, 8.3)
+      const cleanup = bus.register(() => {
+        animation.cancel();
+      });
+      
+      // Auto-cleanup on animation finish or cancel
+      animation.addEventListener('finish', () => {
+        cleanup();
+        complete();
+      }, { once: true });
+      animation.addEventListener('cancel', () => {
+        cleanup();
+        complete();
+      }, { once: true });
     } catch {
       complete();
     }
@@ -189,8 +203,21 @@ export function useSpriteVisibilityTransitions(
       );
       spriteVisibilityAnimations.set(node, animation);
       activeSpriteVisibilityAnimations.add(animation);
-      animation.addEventListener('finish', complete, { once: true });
-      animation.addEventListener('cancel', complete, { once: true });
+      
+      // Register cancellation with TransitionBus (Req 1.2, 6.2, 8.2, 8.3)
+      const cleanup = bus.register(() => {
+        animation.cancel();
+      });
+      
+      // Auto-cleanup on animation finish or cancel
+      animation.addEventListener('finish', () => {
+        cleanup();
+        complete();
+      }, { once: true });
+      animation.addEventListener('cancel', () => {
+        cleanup();
+        complete();
+      }, { once: true });
     } catch {
       complete();
     }
@@ -310,11 +337,15 @@ export function useScenePresentation(
   ) => void,
   effectsDisabled: Ref<boolean>,
   bus: { register: (cancel: () => void) => () => void },
+  prefersReducedMotion: Ref<boolean>,
+  cameraTransitionMs: Ref<number>,
 ) {
   const displayedBackground = ref<PlayerAsset | undefined>();
   const displayedSprites = ref<PlayerFrame['sprites']>([]);
   const previousDisplayedSprites = ref<PlayerFrame['sprites']>([]);
   const transitionTimeouts = ref<number[]>([]);
+  const cameraTransformElement = ref<HTMLElement | null>(null);
+  const backgroundElement = ref<HTMLElement | null>(null);
 
   watch(displayedSprites, (_nextSprites, previousSprites) => {
     previousDisplayedSprites.value = previousSprites ?? [];
@@ -401,6 +432,233 @@ export function useScenePresentation(
     }
 
     applyDisplayedFrame(next);
+    
+    // Track camera transform CSS transitions (Req 1.4, 6.4)
+    trackCameraTransformTransition(next, prev);
+  }
+  
+  /**
+   * Track camera transform CSS transitions and register with TransitionBus.
+   * Handles background scale and sprite transform transitions.
+   * 
+   * @param next - Next frame being applied
+   * @param prev - Previous frame
+   */
+  function trackCameraTransformTransition(next: PlayerFrame, prev: PlayerFrame): void {
+    // Skip if effects disabled or reduced motion
+    if (effectsDisabled.value || prefersReducedMotion.value) {
+      return;
+    }
+    
+    // Skip if camera transform hasn't changed
+    if (next.cameraTransform === prev.cameraTransform) {
+      return;
+    }
+    
+    // Skip if transition duration is 0
+    if (cameraTransitionMs.value <= 0) {
+      return;
+    }
+    
+    console.info('[useScenePresentation] Tracking camera transform transition:', {
+      from: prev.cameraTransform ?? 'default',
+      to: next.cameraTransform ?? 'default',
+      duration: cameraTransitionMs.value,
+    });
+    
+    // Track background element transition
+    if (backgroundElement.value) {
+      trackElementTransition(backgroundElement.value, 'background transform');
+    }
+    
+    // Track camera transform element (scene layer) if available
+    if (cameraTransformElement.value) {
+      trackElementTransition(cameraTransformElement.value, 'camera transform');
+    }
+  }
+  
+  /**
+   * Track a single element's CSS transition and register with TransitionBus.
+   * 
+   * @param element - DOM element to track
+   * @param label - Debug label for logging
+   */
+  function trackElementTransition(element: HTMLElement, label: string): void {
+    let finished = false;
+    let cleanup: (() => void) | null = null;
+    
+    const complete = () => {
+      if (finished) return;
+      finished = true;
+      
+      if (cleanup) {
+        cleanup();
+        cleanup = null;
+      }
+      
+      element.removeEventListener('transitionend', onTransitionEnd);
+      element.removeEventListener('transitioncancel', onTransitionCancel);
+      
+      console.info(`[useScenePresentation] ${label} transition completed`);
+    };
+    
+    const onTransitionEnd = (event: TransitionEvent) => {
+      // Only handle transitions on this element (not bubbled from children)
+      if (event.target !== element) return;
+      
+      // Only handle transform transitions
+      if (event.propertyName !== 'transform') return;
+      
+      complete();
+    };
+    
+    const onTransitionCancel = (event: TransitionEvent) => {
+      // Only handle transitions on this element (not bubbled from children)
+      if (event.target !== element) return;
+      
+      // Only handle transform transitions
+      if (event.propertyName !== 'transform') return;
+      
+      complete();
+    };
+    
+    // Register cancellation with TransitionBus
+    cleanup = bus.register(() => {
+      complete();
+    });
+    
+    // Add event listeners
+    element.addEventListener('transitionend', onTransitionEnd, { once: false });
+    element.addEventListener('transitioncancel', onTransitionCancel, { once: false });
+    
+    console.info(`[useScenePresentation] Registered ${label} transition tracking`);
+  }
+  
+  /**
+   * Set the camera transform element ref (scene layer).
+   * Called from SceneLayer component to provide element reference.
+   * 
+   * @param element - Scene layer DOM element
+   */
+  function setCameraTransformElement(element: HTMLElement | null): void {
+    cameraTransformElement.value = element;
+  }
+  
+  /**
+   * Set the background element ref.
+   * Called from SceneLayer component to provide element reference.
+   * 
+   * @param element - Background DOM element
+   */
+  function setBackgroundElement(element: HTMLElement | null): void {
+    backgroundElement.value = element;
+  }
+  
+  /**
+   * Track sprite position CSS transitions and register with TransitionBus.
+   * Called when sprite positions change to track the CSS left transition.
+   * 
+   * @param spriteShells - Array of sprite shell DOM elements
+   */
+  function trackSpritePositionTransitions(spriteShells: HTMLElement[]): void {
+    // Skip if effects disabled or reduced motion
+    if (effectsDisabled.value || prefersReducedMotion.value) {
+      return;
+    }
+    
+    // Skip if transition duration is 0
+    if (cameraTransitionMs.value <= 0) {
+      return;
+    }
+    
+    // Get current sprite positions to compare
+    const currentSprites = displayedSprites.value ?? [];
+    const previousSprites = previousDisplayedSprites.value ?? [];
+    
+    // Only track sprites that exist in both current and previous (position changes, not enter/leave)
+    const spritesToTrack = currentSprites.filter(current => {
+      const previous = previousSprites.find(p => p.id === current.id);
+      // Only track if sprite existed before AND position changed
+      return previous && previous.position !== current.position;
+    });
+    
+    if (spritesToTrack.length === 0) {
+      return;
+    }
+    
+    console.info('[useScenePresentation] Tracking sprite position transitions:', {
+      count: spritesToTrack.length,
+      sprites: spritesToTrack.map(s => ({ id: s.id, position: s.position })),
+      duration: cameraTransitionMs.value,
+    });
+    
+    // Track each sprite shell's position transition
+    spritesToTrack.forEach(sprite => {
+      const shell = spriteShells.find(el => el?.dataset.spriteId === sprite.id);
+      if (!shell) {
+        console.warn(`[useScenePresentation] Could not find shell element for sprite ${sprite.id}`);
+        return;
+      }
+      
+      trackSpriteShellTransition(shell, sprite.id);
+    });
+  }
+  
+  /**
+   * Track a single sprite shell's CSS transition and register with TransitionBus.
+   * 
+   * @param shell - Sprite shell DOM element
+   * @param spriteId - Sprite identifier for logging
+   */
+  function trackSpriteShellTransition(shell: HTMLElement, spriteId: string): void {
+    let finished = false;
+    let cleanup: (() => void) | null = null;
+    
+    const complete = () => {
+      if (finished) return;
+      finished = true;
+      
+      if (cleanup) {
+        cleanup();
+        cleanup = null;
+      }
+      
+      shell.removeEventListener('transitionend', onTransitionEnd);
+      shell.removeEventListener('transitioncancel', onTransitionCancel);
+      
+      console.info(`[useScenePresentation] Sprite ${spriteId} position transition completed`);
+    };
+    
+    const onTransitionEnd = (event: TransitionEvent) => {
+      // Only handle transitions on this element (not bubbled from children)
+      if (event.target !== shell) return;
+      
+      // Only handle left position transitions
+      if (event.propertyName !== 'left') return;
+      
+      complete();
+    };
+    
+    const onTransitionCancel = (event: TransitionEvent) => {
+      // Only handle transitions on this element (not bubbled from children)
+      if (event.target !== shell) return;
+      
+      // Only handle left position transitions
+      if (event.propertyName !== 'left') return;
+      
+      complete();
+    };
+    
+    // Register cancellation with TransitionBus
+    cleanup = bus.register(() => {
+      complete();
+    });
+    
+    // Add event listeners
+    shell.addEventListener('transitionend', onTransitionEnd, { once: false });
+    shell.addEventListener('transitioncancel', onTransitionCancel, { once: false });
+    
+    console.info(`[useScenePresentation] Registered sprite ${spriteId} position transition tracking`);
   }
 
   return {
@@ -409,6 +667,9 @@ export function useScenePresentation(
     previousDisplayedSprites,
     clearTransitionTimeouts,
     applyFrame,
+    setCameraTransformElement,
+    setBackgroundElement,
+    trackSpritePositionTransitions,
   };
 }
 
