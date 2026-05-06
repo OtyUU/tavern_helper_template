@@ -1,5 +1,5 @@
-import { ref, watch } from 'vue';
 import type { Ref } from 'vue';
+import { ref, watch } from 'vue';
 import type { PlayerAsset, PlayerFrame } from './types';
 
 type SpriteVisibilityEffect = 'fade' | 'none';
@@ -309,6 +309,7 @@ export function useScenePresentation(
     nextSprites: PlayerFrame['sprites'],
   ) => void,
   effectsDisabled: Ref<boolean>,
+  bus: { register: (cancel: () => void) => () => void },
 ) {
   const displayedBackground = ref<PlayerAsset | undefined>();
   const displayedSprites = ref<PlayerFrame['sprites']>([]);
@@ -383,6 +384,19 @@ export function useScenePresentation(
       }, fullDuration);
 
       transitionTimeouts.value = [midpointHandle, finalHandle];
+      
+      // Register cancellation with TransitionBus (Req 1.1, 6.1, 8.2, 8.3)
+      const cleanup = bus.register(() => {
+        window.clearTimeout(midpointHandle);
+        window.clearTimeout(finalHandle);
+        isSceneTransitioning.value = false;
+      });
+      
+      // Auto-cleanup when crossfade completes
+      window.setTimeout(() => {
+        cleanup();
+      }, fullDuration);
+      
       return;
     }
 
@@ -419,6 +433,14 @@ function splitToGraphemes(text: string): string[] {
   return [...text];
 }
 
+/**
+ * Composable for managing typewriter-style dialogue reveal.
+ * 
+ * @param settings - Dialogue reveal timing settings
+ * @param currentFrame - Current frame being displayed
+ * @param effectsDisabled - Whether effects are disabled (instant mode)
+ * @returns Dialogue reveal state and control functions
+ */
 export function useDialogueReveal(
   settings: Ref<DialogueRevealSettings>,
   currentFrame: Ref<PlayerFrame | null>,
@@ -431,6 +453,7 @@ export function useDialogueReveal(
   const isRevealing = ref(false);
   const isFullyRevealed = ref(true);
   let revealGeneration = 0;
+  let trackedPrevFrame: PlayerFrame | null = null;
 
   function scheduleFadeTail(gen: number) {
     if (settings.value.textFadeMs <= 0 || effectsDisabled.value) {
@@ -555,28 +578,49 @@ export function useDialogueReveal(
     }
   }
 
-  let trackedPrevFrame: PlayerFrame | null = null;
+  /**
+   * Begin typewriter reveal for the current frame.
+   * Should only be called when scene is settled (all visual animations complete).
+   * 
+   * Preconditions:
+   * - Called from phase FSM when transitioning to 'reveal' phase
+   * - Scene animations have completed or instant mode is enabled
+   * 
+   * Postconditions:
+   * - If currentFrame is null or has no text: clears reveal state and sets isFullyRevealed to true
+   * - If currentFrame has text: starts typewriter reveal with appropriate speaker transitions
+   * - Idempotent: safe to call multiple times (increments revealGeneration to cancel previous reveals)
+   * 
+   * @remarks
+   * This function replaces the internal watch(currentFrame) logic.
+   * It is designed to be called externally by the phase FSM.
+   */
+  function beginReveal() {
+    const nextFrame = currentFrame.value;
+    const prevFrame = trackedPrevFrame;
+    trackedPrevFrame = nextFrame ?? null;
 
-  watch(
-    () => currentFrame.value,
-    (nextFrame, _prev) => {
-      const prevFrame = trackedPrevFrame;
-      trackedPrevFrame = nextFrame ?? null;
+    console.info('[useDialogueReveal] beginReveal() called:', {
+      frameIndex: nextFrame?.index,
+      text: nextFrame?.text?.substring(0, 50),
+      hasText: !!nextFrame?.text,
+    });
 
-      if (!nextFrame || !nextFrame.text) {
-        revealGeneration++;
-        graphemes.value = [];
-        revealedCharCount.value = 0;
-        displayedSpeaker.value = '';
-        speakerRevealed.value = true;
-        isRevealing.value = false;
-        isFullyRevealed.value = true;
-        return;
-      }
-      startReveal(nextFrame.text, prevFrame?.speaker, nextFrame.speaker);
-    },
-    { immediate: true },
-  );
+    // Handle null frame gracefully (Req 9.2)
+    if (!nextFrame || !nextFrame.text) {
+      revealGeneration++;
+      graphemes.value = [];
+      revealedCharCount.value = 0;
+      displayedSpeaker.value = '';
+      speakerRevealed.value = true;
+      isRevealing.value = false;
+      isFullyRevealed.value = true;
+      console.warn('[useDialogueReveal] beginReveal() called with null/empty frame');
+      return;
+    }
+
+    startReveal(nextFrame.text, prevFrame?.speaker, nextFrame.speaker);
+  }
 
   watch(effectsDisabled, (disabled) => {
     if (disabled && (isRevealing.value || !isFullyRevealed.value)) {
@@ -597,5 +641,6 @@ export function useDialogueReveal(
     isFullyRevealed,
     skipReveal,
     clearReveal,
+    beginReveal,
   };
 }

@@ -11,6 +11,8 @@ import {
 } from './player-composables';
 import { useRenpyPlayerSettingsStore } from './settings';
 import type { PlayerFrame } from './types';
+import { useFramePhase } from './useFramePhase';
+import { useTransitionBus } from './useTransitionBus';
 
 export function useRenpyPlayerController() {
   // ─── Store / settings wiring ──────────────────────────────────────────────
@@ -91,6 +93,14 @@ export function useRenpyPlayerController() {
     () => prefersReducedMotion.value || motionMode.value === 'instant',
   );
 
+  // ─── TransitionBus ────────────────────────────────────────────────────────
+  
+  /**
+   * TransitionBus tracks in-flight visual transitions (scene crossfades, sprite animations, etc.)
+   * Created early so it can be passed to useScenePresentation and useSpriteVisibilityTransitions.
+   */
+  const bus = useTransitionBus();
+
   // ─── 2) Sprite visibility transitions ────────────────────────────────────
 
   const {
@@ -118,6 +128,7 @@ export function useRenpyPlayerController() {
     isSceneTransitioning,
     prepareSpriteVisibilityEffects,
     effectsDisabled,
+    bus,
   );
 
   const lifecycleStopList: Array<() => void> = [];
@@ -395,7 +406,24 @@ export function useRenpyPlayerController() {
     isFullyRevealed,
     skipReveal,
     clearReveal,
+    beginReveal,
   } = useDialogueReveal(settings, currentFrame, effectsDisabled);
+
+  // ─── Phase FSM ────────────────────────────────────────────────────────────
+  
+  /**
+   * Phase FSM coordinates dialogue reveal timing based on animation completion.
+   * Uses the TransitionBus created earlier to track in-flight visual transitions.
+   */
+  const { phase, isBusy: phaseBusy, applyNextFrame, applyFrameIndex } = useFramePhase(
+    bus,
+    frameIndex,
+    frames,
+    currentFrame,
+    isFullyRevealed,
+    beginReveal,
+    effectsDisabled,
+  );
 
   const dialogueTextFull = computed(
     () => currentFrame.value?.text ?? 'No dialogue on this frame.',
@@ -404,7 +432,11 @@ export function useRenpyPlayerController() {
   const autoAdvanceDelayMs = computed(() => settings.value.autoAdvanceDelayMs);
 
   const hasFrames = computed(() => frames.value.length > 0);
-  const isBusy = computed(() => isSceneTransitioning.value);
+  
+  // isBusy now reflects phase FSM state (phase === 'scene')
+  // This gates transport controls and stage click advance
+  const isBusy = computed(() => phaseBusy.value);
+  
   const canRestart = computed(() => hasFrames.value && frameIndex.value > 0);
   const canStepBack = computed(
     () => hasFrames.value && (frameIndex.value > 0 || prevPlayableId.value !== null),
@@ -658,6 +690,16 @@ export function useRenpyPlayerController() {
 
       if (bridge && bridge.targetKey === nextKey) {
         pendingBridge.value = null;
+      }
+
+      // Reset phase to 'scene' when frame changes
+      // This handles both frameIndex changes (via applyNextFrame) and message switches
+      // Note: applyNextFrame() also calls bus.cancelAll() before changing frameIndex,
+      // so in-flight transitions are already cancelled for normal navigation.
+      // For message switches, we also need to cancel and reset phase.
+      if (nextFrame !== previousFrame) {
+        bus.cancelAll();
+        phase.value = 'scene';
       }
 
       applyFrame(nextFrame, effectivePrev);
@@ -1019,8 +1061,7 @@ export function useRenpyPlayerController() {
 
   function jumpToStartInternal() {
     setMotionModeForNav(0);
-    cancelAllEffects();
-    frameIndex.value = 0;
+    applyFrameIndex(0);
   }
 
   function stepBackwardInternal() {
@@ -1029,8 +1070,7 @@ export function useRenpyPlayerController() {
     if (frameIndex.value > 0) {
       const target = Math.max(0, frameIndex.value - 1);
       setMotionModeForNav(target);
-      cancelAllEffects();
-      frameIndex.value = target;
+      applyNextFrame('backward');
       return;
     }
 
@@ -1053,7 +1093,7 @@ export function useRenpyPlayerController() {
   }
 
   function stepForwardInternal() {
-    if (isSceneTransitioning.value) {
+    if (isBusy.value) {
       return;
     }
     if (!hasFrames.value) return;
@@ -1061,7 +1101,7 @@ export function useRenpyPlayerController() {
     if (frameIndex.value < frames.value.length - 1) {
       const target = Math.min(frames.value.length - 1, frameIndex.value + 1);
       setMotionModeForNav(target);
-      frameIndex.value = target;
+      applyNextFrame('forward');
       return;
     }
 
@@ -1089,7 +1129,7 @@ export function useRenpyPlayerController() {
   }
 
   function onStageClick() {
-    if (!hasFrames.value || isSceneTransitioning.value) {
+    if (!hasFrames.value || isBusy.value) {
       return;
     }
 
@@ -1250,6 +1290,11 @@ export function useRenpyPlayerController() {
       currentFrame,
       hasFrames,
       maxMessageId,
+    },
+
+    phase: {
+      phase: readonly(phase),
+      isBusy: readonly(isBusy),
     },
 
     stage: {
