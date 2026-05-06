@@ -1,12 +1,13 @@
-import { ref, computed, watch, onMounted, onScopeDispose, readonly, reactive } from 'vue';
+import { klona } from 'klona';
 import { storeToRefs } from 'pinia';
+import { computed, onMounted, onScopeDispose, reactive, readonly, ref, watch } from 'vue';
 import { buildFrames, getInitialState, parseScriptFromMessage } from './parser';
 import {
-  useAutoplay,
-  useDialogueReveal,
-  useReducedMotion,
-  useScenePresentation,
-  useSpriteVisibilityTransitions,
+    useAutoplay,
+    useDialogueReveal,
+    useReducedMotion,
+    useScenePresentation,
+    useSpriteVisibilityTransitions,
 } from './player-composables';
 import { useRenpyPlayerSettingsStore } from './settings';
 import type { PlayerFrame } from './types';
@@ -22,6 +23,28 @@ export function useRenpyPlayerController() {
     characterSpriteConfig,
     characterSpriteConfigError,
   } = storeToRefs(settingsStore);
+
+  /**
+   * Updates settings through a draft pattern that ensures proper cloning.
+   * This is the ONLY way controller code should modify settings.
+   * 
+   * @param updater - Function that receives a cloned draft and modifies it
+   * 
+   * @example
+   * updateSettings(draft => {
+   *   draft.preferredMessageId = 123;
+   *   draft.followLatestPlayable = false;
+   * });
+   */
+  function updateSettings(updater: (draft: typeof settings.value) => void): void {
+    try {
+      const draft = klona(settings.value);
+      updater(draft);
+      settings.value = draft;
+    } catch (error) {
+      console.error('[renpy-player] Failed to update settings:', error);
+    }
+  }
 
   // ─── Core derived model ───────────────────────────────────────────────────
 
@@ -226,7 +249,9 @@ export function useRenpyPlayerController() {
       cancelAllEffects();
       activeMessageId.value = null;
       manualMessageId.value = null;
-      settings.value.preferredMessageId = null;
+      updateSettings(draft => {
+        draft.preferredMessageId = null;
+      });
       frameIndex.value = 0;
       return;
     }
@@ -242,7 +267,9 @@ export function useRenpyPlayerController() {
     const shouldGoLast = safeId < excludedMessageId;
     pendingFrameTarget.value = shouldGoLast ? { kind: 'last' } : { kind: 'first' };
 
-    settings.value.preferredMessageId = safeId;
+    updateSettings(draft => {
+      draft.preferredMessageId = safeId;
+    });
     manualMessageId.value = safeId;
     activeMessageId.value = safeId;
 
@@ -688,7 +715,9 @@ export function useRenpyPlayerController() {
 
     const previousActiveId = activeMessageId.value;
 
-    settings.value.preferredMessageId = messageId;
+    updateSettings(draft => {
+      draft.preferredMessageId = messageId;
+    });
     manualMessageId.value = messageId;
     activeMessageId.value = messageId;
 
@@ -735,7 +764,9 @@ export function useRenpyPlayerController() {
         }
       }
 
-      settings.value.preferredMessageId = targetId;
+      updateSettings(draft => {
+        draft.preferredMessageId = targetId;
+      });
       manualMessageId.value = targetId;
       activeMessageId.value = targetId;
 
@@ -768,6 +799,85 @@ export function useRenpyPlayerController() {
     }
   }
 
+  /**
+   * Handles MESSAGE_UPDATED events that occur during AI generation.
+   * 
+   * When generation is in progress, MESSAGE_UPDATED events require special handling
+   * to confirm the actual generation target and manage playable message exclusions.
+   * This function:
+   * - Confirms the generation target on first MESSAGE_UPDATED during generation
+   * - Updates excluded playable messages if the target differs from prediction
+   * - Jumps to a safe frame if the active message becomes the generation target
+   * - Returns early if the message is the confirmed generation target
+   * - Falls through to standard handling for other messages
+   * 
+   * @param messageId - The ID of the message being updated during generation
+   */
+  function handleMessageUpdatedDuringGeneration(messageId: number): void {
+    const locked = generationTargetMessageId.value;
+
+    if (!generationTargetConfirmed.value) {
+      generationTargetConfirmed.value = true;
+
+      if (locked !== messageId) {
+        if (locked != null) {
+          excludedPlayableMessageIds.value.delete(locked);
+        }
+
+        generationTargetMessageId.value = messageId;
+        excludedPlayableMessageIds.value.add(messageId);
+        rebuildPlayableIndex();
+
+        if (
+          activeMessageId.value === messageId ||
+          settings.value.preferredMessageId === messageId
+        ) {
+          jumpToSafeFrameBefore(messageId);
+        }
+      }
+
+      if (generationTargetMessageId.value === messageId) {
+        return;
+      }
+    }
+
+    if (generationTargetMessageId.value != null && messageId === generationTargetMessageId.value) {
+      return;
+    }
+
+    // Fall through to standard handling
+    rebuildPlayableIndex();
+    onMessageChanged(messageId);
+  }
+
+  /**
+   * Unified handler for message modification events.
+   * 
+   * This function consolidates the logic for MESSAGE_EDITED, MESSAGE_UPDATED, and MESSAGE_SWIPED
+   * events to eliminate code duplication. It routes MESSAGE_UPDATED events during generation
+   * to special handling logic, while all other cases follow standard message change processing.
+   * 
+   * @param messageId - The ID of the modified message
+   * @param eventType - The type of event that triggered this handler (MESSAGE_EDITED, MESSAGE_UPDATED, or MESSAGE_SWIPED)
+   */
+  function handleMessageModified(messageId: number, eventType: string): void {
+    try {
+      console.info(`[renpy-player] Message ${eventType}: ${messageId}`);
+
+      // Special handling for MESSAGE_UPDATED during generation
+      if (eventType === 'MESSAGE_UPDATED' && isGenerationInProgress.value) {
+        handleMessageUpdatedDuringGeneration(messageId);
+        return;
+      }
+
+      // Standard handling for all other cases
+      rebuildPlayableIndex();
+      onMessageChanged(messageId);
+    } catch (error) {
+      console.error(`[renpy-player] Error handling ${eventType} for message ${messageId}:`, error);
+    }
+  }
+
   function resolveNearestPlayableId(requestedId: number): number | null {
     const ids = playableMessageIds.value;
     if (ids.length === 0) return null;
@@ -789,7 +899,9 @@ export function useRenpyPlayerController() {
   }
 
   function useLatestPlayable() {
-    settings.value.followLatestPlayable = true;
+    updateSettings(draft => {
+      draft.followLatestPlayable = true;
+    });
     fullSync();
     frameIndex.value = 0;
   }
@@ -867,7 +979,9 @@ export function useRenpyPlayerController() {
     cancelAllEffects();
 
     pendingFrameTarget.value = { kind: 'last' };
-    settings.value.preferredMessageId = prevId;
+    updateSettings(draft => {
+      draft.preferredMessageId = prevId;
+    });
     manualMessageId.value = prevId;
     activeMessageId.value = prevId;
 
@@ -902,7 +1016,9 @@ export function useRenpyPlayerController() {
       };
     }
 
-    settings.value.preferredMessageId = nextId;
+    updateSettings(draft => {
+      draft.preferredMessageId = nextId;
+    });
     manualMessageId.value = nextId;
     activeMessageId.value = nextId;
     frameIndex.value = 0;
@@ -1009,45 +1125,10 @@ export function useRenpyPlayerController() {
         onMessageReceived(messageId);
       }).stop,
       eventOn(tavern_events.MESSAGE_EDITED, (messageId: number) => {
-        rebuildPlayableIndex();
-        onMessageChanged(messageId);
+        handleMessageModified(messageId, 'MESSAGE_EDITED');
       }).stop,
       eventOn(tavern_events.MESSAGE_UPDATED, (messageId: number) => {
-        if (isGenerationInProgress.value) {
-          const locked = generationTargetMessageId.value;
-
-          if (!generationTargetConfirmed.value) {
-            generationTargetConfirmed.value = true;
-
-            if (locked !== messageId) {
-              if (locked != null) {
-                excludedPlayableMessageIds.value.delete(locked);
-              }
-
-              generationTargetMessageId.value = messageId;
-              excludedPlayableMessageIds.value.add(messageId);
-              rebuildPlayableIndex();
-
-              if (
-                activeMessageId.value === messageId ||
-                settings.value.preferredMessageId === messageId
-              ) {
-                jumpToSafeFrameBefore(messageId);
-              }
-            }
-
-            if (generationTargetMessageId.value === messageId) {
-              return;
-            }
-          }
-
-          if (generationTargetMessageId.value != null && messageId === generationTargetMessageId.value) {
-            return;
-          }
-        }
-
-        rebuildPlayableIndex();
-        onMessageChanged(messageId);
+        handleMessageModified(messageId, 'MESSAGE_UPDATED');
       }).stop,
       eventOn(tavern_events.GENERATION_STARTED, (type: string, option: any, dry_run: boolean) => {
         beginGenerationLock(type, option as GenerationStartedOption, dry_run);
@@ -1062,8 +1143,7 @@ export function useRenpyPlayerController() {
         fullSync();
       }).stop,
       eventOn(tavern_events.MESSAGE_SWIPED, (messageId: number) => {
-        rebuildPlayableIndex();
-        onMessageChanged(messageId);
+        handleMessageModified(messageId, 'MESSAGE_SWIPED');
       }).stop,
       eventOn(tavern_events.MORE_MESSAGES_LOADED, () => {
         fullSync();
