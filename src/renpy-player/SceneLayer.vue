@@ -1,6 +1,5 @@
 <template>
-  <div 
-    ref="sceneLayerRef"
+  <div
     class="renpy-player__scene-layer" 
     :class="controller.scene.cameraAnimationClass"
   >
@@ -55,17 +54,10 @@ import SmartImage from './SmartImage.vue';
 
 const controller = useRenpyPlayer();
 
-// Element refs for camera transform tracking
-const sceneLayerRef = ref<HTMLElement | null>(null);
 const backgroundRef = ref<InstanceType<typeof SmartImage> | null>(null);
 const spriteShellRefs = ref<HTMLElement[]>([]);
 
 onMounted(() => {
-  // Provide element references to controller for CSS transition tracking
-  if (sceneLayerRef.value) {
-    controller.scene.setCameraTransformElement(sceneLayerRef.value);
-  }
-  
   // SmartImage component wraps the actual img element, so we need to get the root element
   if (backgroundRef.value && backgroundRef.value.$el) {
     controller.scene.setBackgroundElement(backgroundRef.value.$el as HTMLElement);
@@ -101,7 +93,6 @@ watch(
 
 onUnmounted(() => {
   // Clean up element references
-  controller.scene.setCameraTransformElement(null);
   controller.scene.setBackgroundElement(null);
 });
 </script>
