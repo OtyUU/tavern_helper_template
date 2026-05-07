@@ -150,12 +150,11 @@ export function useSpriteVisibilityTransitions(
       spriteVisibilityAnimations.set(node, animation);
       activeSpriteVisibilityAnimations.add(animation);
       
-      // Register cancellation with TransitionBus (Req 1.2, 6.2, 8.2, 8.3)
+      // Register cancellation with TransitionBus
       const cleanup = bus.register(() => {
         animation.cancel();
       });
       
-      // Auto-cleanup on animation finish or cancel
       animation.addEventListener('finish', () => {
         cleanup();
         complete();
@@ -204,12 +203,11 @@ export function useSpriteVisibilityTransitions(
       spriteVisibilityAnimations.set(node, animation);
       activeSpriteVisibilityAnimations.add(animation);
       
-      // Register cancellation with TransitionBus (Req 1.2, 6.2, 8.2, 8.3)
+      // Register cancellation with TransitionBus
       const cleanup = bus.register(() => {
         animation.cancel();
       });
       
-      // Auto-cleanup on animation finish or cancel
       animation.addEventListener('finish', () => {
         cleanup();
         complete();
@@ -440,54 +438,32 @@ export function useScenePresentation(
 
     applyDisplayedFrame(next);
     
-    // Track camera transform CSS transitions (Req 1.4, 6.4)
+    // Track camera transform CSS transitions
     trackCameraTransformTransition(next, prev);
   }
   
-  /**
-   * Track camera transform CSS transitions and register with TransitionBus.
-   * Handles background scale and sprite transform transitions.
-   * 
-   * @param next - Next frame being applied
-   * @param prev - Previous frame
-   */
+  /** Track camera transform CSS transitions via TransitionBus. */
   function trackCameraTransformTransition(next: PlayerFrame, prev: PlayerFrame): void {
     // Skip if effects disabled or reduced motion
     if (effectsDisabled.value || prefersReducedMotion.value) {
       return;
     }
     
-    // Skip if camera transform hasn't changed
     if (next.cameraTransform === prev.cameraTransform) {
       return;
     }
     
-    // Skip if transition duration is 0
     if (cameraTransitionMs.value <= 0) {
       return;
     }
     
-    console.info('[useScenePresentation] Tracking camera transform transition:', {
-      from: prev.cameraTransform ?? 'default',
-      to: next.cameraTransform ?? 'default',
-      duration: cameraTransitionMs.value,
-    });
-    
-    // Track background element transition (background scale changes with camera transform)
-    // Note: We only track the background element because the scene layer itself doesn't
-    // have a CSS transition - it's just a container. The background element has the
-    // actual transform transition that we need to wait for.
+    // Only background has the actual CSS transition; scene layer is just a container.
     if (backgroundElement.value) {
       trackElementTransition(backgroundElement.value, 'camera transform (background)');
     }
   }
   
-  /**
-   * Track a single element's CSS transition and register with TransitionBus.
-   * 
-   * @param element - DOM element to track
-   * @param label - Debug label for logging
-   */
+  /** Track a single element's CSS transition and register with TransitionBus. */
   function trackElementTransition(element: HTMLElement, label: string): void {
     let finished = false;
     let cleanup: (() => void) | null = null;
@@ -509,19 +485,9 @@ export function useScenePresentation(
       
       element.removeEventListener('transitionend', onTransitionEnd);
       element.removeEventListener('transitioncancel', onTransitionCancel);
-      
-      console.info(`[useScenePresentation] ${label} transition completed`);
     };
     
     const onTransitionEnd = (event: TransitionEvent) => {
-      console.info(`[useScenePresentation] transitionend event:`, {
-        label,
-        target: event.target,
-        element,
-        isSameTarget: event.target === element,
-        propertyName: event.propertyName,
-      });
-      
       // Only handle transitions on this element (not bubbled from children)
       if (event.target !== element) return;
       
@@ -532,14 +498,6 @@ export function useScenePresentation(
     };
     
     const onTransitionCancel = (event: TransitionEvent) => {
-      console.info(`[useScenePresentation] transitioncancel event:`, {
-        label,
-        target: event.target,
-        element,
-        isSameTarget: event.target === element,
-        propertyName: event.propertyName,
-      });
-      
       // Only handle transitions on this element (not bubbled from children)
       if (event.target !== element) return;
       
@@ -554,52 +512,32 @@ export function useScenePresentation(
       complete();
     });
     
-    // Add event listeners
     element.addEventListener('transitionend', onTransitionEnd, { once: false });
     element.addEventListener('transitioncancel', onTransitionCancel, { once: false });
     
     const fallbackMs = cameraTransitionMs.value + 50;
     fallbackHandle = window.setTimeout(() => {
-      console.warn(`[useScenePresentation] ${label} fallback timeout fired`);
       complete();
     }, fallbackMs);
-    
-    console.info(`[useScenePresentation] Registered ${label} transition tracking`);
   }
   
-  /**
-   * Set the camera transform element ref (scene layer).
-   * Called from SceneLayer component to provide element reference.
-   * 
-   * @param element - Scene layer DOM element
-   */
+  /** Called from SceneLayer to provide the camera transform element ref. */
   function setCameraTransformElement(element: HTMLElement | null): void {
     cameraTransformElement.value = element;
   }
   
-  /**
-   * Set the background element ref.
-   * Called from SceneLayer component to provide element reference.
-   * 
-   * @param element - Background DOM element
-   */
+  /** Called from SceneLayer to provide the background element ref. */
   function setBackgroundElement(element: HTMLElement | null): void {
     backgroundElement.value = element;
   }
   
-  /**
-   * Track sprite position CSS transitions and register with TransitionBus.
-   * Called when sprite positions change to track the CSS left transition.
-   * 
-   * @param spriteShells - Array of sprite shell DOM elements
-   */
+  /** Track CSS left transitions on sprites whose position changed. */
   function trackSpritePositionTransitions(spriteShells: HTMLElement[]): void {
     // Skip if effects disabled or reduced motion
     if (effectsDisabled.value || prefersReducedMotion.value) {
       return;
     }
     
-    // Skip if transition duration is 0
     if (cameraTransitionMs.value <= 0) {
       return;
     }
@@ -619,17 +557,9 @@ export function useScenePresentation(
       return;
     }
     
-    console.info('[useScenePresentation] Tracking sprite position transitions:', {
-      count: spritesToTrack.length,
-      sprites: spritesToTrack.map(s => ({ id: s.id, position: s.position })),
-      duration: cameraTransitionMs.value,
-    });
-    
-    // Track each sprite shell's position transition
     spritesToTrack.forEach(sprite => {
       const shell = spriteShells.find(el => el?.dataset.spriteId === sprite.id);
       if (!shell) {
-        console.warn(`[useScenePresentation] Could not find shell element for sprite ${sprite.id}`);
         return;
       }
       
@@ -637,12 +567,7 @@ export function useScenePresentation(
     });
   }
   
-  /**
-   * Track a single sprite shell's CSS transition and register with TransitionBus.
-   * 
-   * @param shell - Sprite shell DOM element
-   * @param spriteId - Sprite identifier for logging
-   */
+  /** Track a single sprite shell's CSS transition and register with TransitionBus. */
   function trackSpriteShellTransition(shell: HTMLElement, spriteId: string): void {
     let finished = false;
     let cleanup: (() => void) | null = null;
@@ -664,8 +589,6 @@ export function useScenePresentation(
       
       shell.removeEventListener('transitionend', onTransitionEnd);
       shell.removeEventListener('transitioncancel', onTransitionCancel);
-      
-      console.info(`[useScenePresentation] Sprite ${spriteId} position transition completed`);
     };
     
     const onTransitionEnd = (event: TransitionEvent) => {
@@ -693,17 +616,13 @@ export function useScenePresentation(
       complete();
     });
     
-    // Add event listeners
     shell.addEventListener('transitionend', onTransitionEnd, { once: false });
     shell.addEventListener('transitioncancel', onTransitionCancel, { once: false });
     
     const fallbackMs = cameraTransitionMs.value + 50;
     fallbackHandle = window.setTimeout(() => {
-      console.warn(`[useScenePresentation] Sprite ${spriteId} position fallback timeout fired`);
       complete();
     }, fallbackMs);
-    
-    console.info(`[useScenePresentation] Registered sprite ${spriteId} position transition tracking`);
   }
 
   return {
@@ -742,12 +661,7 @@ function splitToGraphemes(text: string): string[] {
 }
 
 /**
- * Composable for managing typewriter-style dialogue reveal.
- * 
- * @param settings - Dialogue reveal timing settings
- * @param currentFrame - Current frame being displayed
- * @param effectsDisabled - Whether effects are disabled (instant mode)
- * @returns Dialogue reveal state and control functions
+ * Typewriter-style dialogue reveal. Called by phase FSM via `beginReveal()`.
  */
 export function useDialogueReveal(
   settings: Ref<DialogueRevealSettings>,
@@ -888,33 +802,14 @@ export function useDialogueReveal(
 
   /**
    * Begin typewriter reveal for the current frame.
-   * Should only be called when scene is settled (all visual animations complete).
-   * 
-   * Preconditions:
-   * - Called from phase FSM when transitioning to 'reveal' phase
-   * - Scene animations have completed or instant mode is enabled
-   * 
-   * Postconditions:
-   * - If currentFrame is null or has no text: clears reveal state and sets isFullyRevealed to true
-   * - If currentFrame has text: starts typewriter reveal with appropriate speaker transitions
-   * - Idempotent: safe to call multiple times (increments revealGeneration to cancel previous reveals)
-   * 
-   * @remarks
-   * This function replaces the internal watch(currentFrame) logic.
-   * It is designed to be called externally by the phase FSM.
+   * Called by phase FSM when transitioning to 'reveal' phase.
+   * Increments revealGeneration to cancel any previous in-flight reveals.
    */
   function beginReveal() {
     const nextFrame = currentFrame.value;
     const prevFrame = trackedPrevFrame;
     trackedPrevFrame = nextFrame ?? null;
 
-    console.info('[useDialogueReveal] beginReveal() called:', {
-      frameIndex: nextFrame?.index,
-      text: nextFrame?.text?.substring(0, 50),
-      hasText: !!nextFrame?.text,
-    });
-
-    // Handle null frame gracefully (Req 9.2)
     if (!nextFrame || !nextFrame.text) {
       revealGeneration++;
       graphemes.value = [];
@@ -923,7 +818,7 @@ export function useDialogueReveal(
       speakerRevealed.value = true;
       isRevealing.value = false;
       isFullyRevealed.value = true;
-      console.warn('[useDialogueReveal] beginReveal() called with null/empty frame');
+
       return;
     }
 

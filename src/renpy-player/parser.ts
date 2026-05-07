@@ -162,7 +162,7 @@ function hasOnlyAllowedTransforms(transforms: string[], allowed: Set<string>): b
 function parseShowTail(rest: string, allowedTransforms: Set<string>): ParsedShowTail | null {
   let remaining = rest.trim();
 
-  // 1. Extract trailing "at <t1>, <t2>, ..." clause (must be last)
+  // "at" clause (must be last)
   let transforms: string[] = [];
   const atMatch = remaining.match(/\bat\s+(.+)$/i);
   if (atMatch) {
@@ -173,7 +173,6 @@ function parseShowTail(rest: string, allowedTransforms: Set<string>): ParsedShow
     remaining = remaining.slice(0, atMatch.index).trim();
   }
 
-  // 2. Extract "in <outfit>"
   let outfit: string | undefined;
   const inMatch = remaining.match(/\bin\s+([A-Za-z0-9_-]+)\b/i);
   if (inMatch) {
@@ -181,14 +180,13 @@ function parseShowTail(rest: string, allowedTransforms: Set<string>): ParsedShow
     remaining = (remaining.slice(0, inMatch.index) + remaining.slice((inMatch.index ?? 0) + inMatch[0].length)).trim();
   }
 
-  // 3. Extract "blush" keyword
   let blush = false;
   remaining = remaining.replace(/\bblush\b/gi, () => {
     blush = true;
     return '';
   }).trim();
 
-  // 4. Remaining tokens = pose/expression candidates
+  // Remaining tokens = pose/expression candidates
   const tokens = remaining.split(/\s+/).map(token => token.trim()).filter(Boolean);
 
   return {
@@ -245,14 +243,11 @@ function parseLines(source: string): ParsedLines {
       const original = rawLine.trim();
       if (!original) return;
 
-      // Fast-path full-line comments (keep behavior identical to before).
       if (original.startsWith('#') || original.startsWith('//')) return;
 
-      // Strip trailing inline comments, but only when the marker is outside quotes.
       const line = stripInlineComment(original).trim();
       if (!line) return;
 
-      // scene <background> [<segment>]
       const sceneMatch = line.match(/^scene\s+([A-Za-z0-9_-]+)(?:\s+([A-Za-z0-9_-]+))?$/i);
       if (sceneMatch) {
         commands.push({
@@ -264,7 +259,6 @@ function parseLines(source: string): ParsedLines {
         return;
       }
 
-      // hide all
       if (/^hide\s+all$/i.test(line)) {
         commands.push({
           type: 'hide-all',
@@ -273,7 +267,6 @@ function parseLines(source: string): ParsedLines {
         return;
       }
 
-      // hide <character>
       const hideMatch = line.match(/^hide\s+([A-Za-z0-9_-]+)$/i);
       if (hideMatch) {
         commands.push({
@@ -284,7 +277,6 @@ function parseLines(source: string): ParsedLines {
         return;
       }
 
-      // camera
       if (/^camera$/i.test(line)) {
         commands.push({
           type: 'camera',
@@ -311,7 +303,6 @@ function parseLines(source: string): ParsedLines {
         return;
       }
 
-      // show <character> [...]
       const showMatch = line.match(/^show\s+([A-Za-z0-9_-]+)(.*)?$/i);
       if (showMatch) {
         const character = showMatch[1];
@@ -330,7 +321,6 @@ function parseLines(source: string): ParsedLines {
         return;
       }
 
-      // say with attrs: <speaker> <attrs...> "<text>"
       const sayWithAttrsMatch = line.match(
         /^([A-Za-z_][\w-]*)\s+(.+?)\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/
       );
@@ -360,7 +350,6 @@ function parseLines(source: string): ParsedLines {
         return;
       }
 
-      // dialogue: <speaker> "<text>"
       const dialogueMatch = line.match(/^([A-Za-z_][\w-]*)\s+("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/);
       if (dialogueMatch) {
         commands.push({
@@ -372,7 +361,6 @@ function parseLines(source: string): ParsedLines {
         return;
       }
 
-      // narration: "<text>"
       const narrationMatch = line.match(/^("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')$/);
       if (narrationMatch) {
         commands.push({
@@ -391,7 +379,7 @@ function parseLines(source: string): ParsedLines {
 }
 
 export function parseScriptFromMessage(message: string): ParsedScript {
-  // Prefer the first fenced code block if it contains any recognized commands; otherwise parse the whole message.
+  // Prefer first fenced code block if it has commands.
   const firstFencedMatch = message.match(/```(?:[\w-]+)?\s*([\s\S]*?)```/);
   const firstFenced = firstFencedMatch?.[1]?.trim();
 
@@ -405,10 +393,9 @@ export function parseScriptFromMessage(message: string): ParsedScript {
         ignoredLines: parsedFenced.ignoredLines,
       };
     }
-    // else: fall through to whole-message parse (may include later fenced blocks and outside text)
+    // Fall through to whole-message parse.
   }
 
-  // Fallback: parse the entire message (includes later fenced blocks and outside text).
   const parsedWholeMessage = parseLines(message);
   if (parsedWholeMessage.commands.length > 0 || parsedWholeMessage.ignoredLines.length > 0) {
     return {
@@ -545,8 +532,7 @@ function resolveShowState(
     fallbackExpression,
   );
 
-  // Blush persists across non-expression updates and clears when the resolved expression changes,
-  // unless the new command explicitly restates `blush`.
+  // Blush: explicit flag sets true; expression change clears; otherwise persists.
   const blush = command.blush
     ? true
     : expression !== fallbackExpression

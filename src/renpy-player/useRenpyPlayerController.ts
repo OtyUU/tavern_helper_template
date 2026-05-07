@@ -15,7 +15,7 @@ import { useFramePhase } from './useFramePhase';
 import { useTransitionBus } from './useTransitionBus';
 
 export function useRenpyPlayerController() {
-  // ─── Store / settings wiring ──────────────────────────────────────────────
+  // ─── Store / settings wiring ───────────────────────────────────────────────
 
   const settingsStore = useRenpyPlayerSettingsStore();
   const {
@@ -48,7 +48,7 @@ export function useRenpyPlayerController() {
     }
   }
 
-  // ─── Core derived model ───────────────────────────────────────────────────
+  // ─── Core derived model ────────────────────────────────────────────────────
 
   // Cursor coordinate 1/2: which message we're playing.
   // (Cursor coordinate 2/2 is frameIndex.)
@@ -77,7 +77,7 @@ export function useRenpyPlayerController() {
   const manualMessageId = ref<number | null>(settings.value.preferredMessageId);
   const isSceneTransitioning = ref(false);
 
-  // ─── 1) Reduced motion ────────────────────────────────────────────────────
+  // ─── Reduced motion ────────────────────────────────────────────────────────
 
   const {
     prefersReducedMotion,
@@ -93,13 +93,11 @@ export function useRenpyPlayerController() {
     () => prefersReducedMotion.value || motionMode.value === 'instant',
   );
 
-  // ─── HUD hide/show signal ─────────────────────────────────────────────────
+  // ─── HUD hide/show & TransitionBus ─────────────────────────────────────────
 
   const hudShowInProgress = ref(false);
   let hudShowTimeout: number | null = null;
 
-  // ─── TransitionBus ────────────────────────────────────────────────────────
-  
   /**
    * TransitionBus tracks in-flight visual transitions (scene crossfades, sprite animations, etc.)
    * Created early so it can be passed to useScenePresentation and useSpriteVisibilityTransitions.
@@ -134,7 +132,7 @@ export function useRenpyPlayerController() {
     }, settings.value.hudShowDurationMs);
   });
 
-  // ─── 2) Sprite visibility transitions ────────────────────────────────────
+  // ─── Sprite visibility transitions ─────────────────────────────────────────
 
   const {
     onSpriteEnter,
@@ -149,7 +147,7 @@ export function useRenpyPlayerController() {
     bus,
   );
 
-  // ─── 3) Scene presentation ────────────────────────────────────────────────
+  // ─── Scene presentation ────────────────────────────────────────────────────
 
   const {
     displayedBackground,
@@ -181,7 +179,7 @@ export function useRenpyPlayerController() {
   const characterNaturalHeights = ref<Record<string, number>>({});
   const assetResolutionStatus = ref<Record<string, { resolved?: string; failed: string[] }>>({});
 
-  // ─── Phase 0 diagnostic state ─────────────────────────────────────────────
+  // ─── Playable message state ────────────────────────────────────────────────
 
   const playableMessageIds = ref<number[]>([]);
   const excludedPlayableMessageIds = ref<Set<number>>(new Set());
@@ -202,7 +200,7 @@ export function useRenpyPlayerController() {
     return 'idle-end';
   });
 
-  // ─── Phase 1: Playable message index ──────────────────────────────────────
+  // ─── Playable message index ────────────────────────────────────────────────
 
   function isMessagePlayable(msg: ChatMessage | undefined | null): boolean {
     if (!msg) return false;
@@ -263,7 +261,7 @@ export function useRenpyPlayerController() {
   const prevPlayableId = computed(() => findPrevPlayableId(activeMessageId.value));
   const nextPlayableId = computed(() => findNextPlayableId(activeMessageId.value));
 
-  // ─── Phase 5: Generation safe-frame lock ─────────────────────────────────
+  // ─── Generation lock ───────────────────────────────────────────────────────
 
   type GenerationStartedOption = {
     automatic_trigger?: boolean;
@@ -450,7 +448,7 @@ export function useRenpyPlayerController() {
     beginReveal,
   } = useDialogueReveal(settings, currentFrame, effectsDisabled);
 
-  // ─── Phase FSM ────────────────────────────────────────────────────────────
+  // ─── Phase FSM ─────────────────────────────────────────────────────────────
   
   const blockReveal = computed(
     () => !effectsDisabled.value && hudShowInProgress.value,
@@ -479,8 +477,6 @@ export function useRenpyPlayerController() {
 
   const hasFrames = computed(() => frames.value.length > 0);
   
-  // isBusy now reflects phase FSM state (phase === 'scene')
-  // This gates transport controls and stage click advance
   const isBusy = computed(() => phaseBusy.value);
   
   const canRestart = computed(() => hasFrames.value && frameIndex.value > 0);
@@ -498,32 +494,18 @@ export function useRenpyPlayerController() {
     () => hasFrames.value && (frameIndex.value < frames.value.length - 1 || nextPlayableId.value !== null),
   );
 
-  /**
-   * Determines if autoplay can advance to the next frame.
-   * 
-   * Autoplay waits for:
-   * - Scene phase: Visual animations to complete (Req 5.1)
-   * - Reveal phase: Dialogue reveal to complete (Req 5.2)
-   * - Done phase: Everything complete, ready to advance (Req 5.3)
-   * 
-   * Also checks:
-   * - hasFrames: Must have frames to play
-   * - hasNextStep: Must have a next frame to advance to
-   * - !isGenerationInProgress: Must not be generating new content
-   * 
-   * Requirements: 5.1, 5.2, 5.3
-   */
+  /** Autoplay advances only after phase === 'done' (scene + reveal complete). */
   const canAutoAdvanceNow = computed(
     () =>
       hasFrames.value &&
-      phase.value === 'done' &&  // Phase-based gating: only advance when everything is complete
+      phase.value === 'done' &&
       hasNextStep.value &&
       !isGenerationInProgress.value,
   );
   const canSelectPreviousMessage = computed(() => prevPlayableId.value !== null);
   const canSelectNextMessage = computed(() => nextPlayableId.value !== null);
 
-  // ─── Stage geometry + presentation computeds ──────────────────────────────
+  // ─── Stage geometry & presentation ─────────────────────────────────────────
 
   function clampNumber(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value));
@@ -638,42 +620,21 @@ export function useRenpyPlayerController() {
     return parts.join(', ');
   });
 
-  // ─── Camera shake tracking ────────────────────────────────────────────────
+  // ─── Camera shake tracking ─────────────────────────────────────────────────
 
   /**
-   * Camera shake duration in milliseconds (matches CSS animation duration).
-   * Defined in renpy-player.scss: .renpy-player__scene-layer--shake
+   * Camera shake duration (matches CSS .renpy-player__scene-layer--shake animation).
    */
   const CAMERA_SHAKE_DURATION_MS = 450;
 
-  /**
-   * Track camera shake animations and register them with the TransitionBus.
-   * When a shake animation starts, register a timeout with the bus that will
-   * auto-cleanup when the animation completes.
-   */
+  /** Registers camera shake with TransitionBus; auto-cleans up after duration. */
   watch(
     cameraAnimationClass,
     (newClass, oldClass) => {
-      console.info('[renpy-player] Camera animation class changed:', { newClass, oldClass, effectsDisabled: effectsDisabled.value });
-      
-      // Only track when shake class is applied (not when removed)
-      if (newClass !== 'renpy-player__scene-layer--shake') {
-        return;
-      }
+      if (newClass !== 'renpy-player__scene-layer--shake') return;
+      if (effectsDisabled.value) return;
+      if (newClass === oldClass) return;
 
-      // Skip registration if effects are disabled (reduced motion or instant mode)
-      if (effectsDisabled.value) {
-        console.info('[renpy-player] Camera shake skipped (effects disabled)');
-        return;
-      }
-
-      // Skip if this is the same class (no actual change)
-      if (newClass === oldClass) {
-        console.info('[renpy-player] Camera shake skipped (same class)');
-        return;
-      }
-
-      // Register cancellation with bus first
       let timeoutHandle: number | undefined;
       const cleanup = bus.register(() => {
         if (timeoutHandle !== undefined) {
@@ -681,13 +642,9 @@ export function useRenpyPlayerController() {
         }
       });
 
-      // Schedule cleanup for when shake completes
       timeoutHandle = window.setTimeout(() => {
-        console.info('[renpy-player] Camera shake completed, cleaning up');
         cleanup();
       }, CAMERA_SHAKE_DURATION_MS);
-
-      console.info('[renpy-player] Camera shake registered with TransitionBus', { busCount: bus.count.value });
     },
     { flush: 'post' }
   );
@@ -710,8 +667,6 @@ export function useRenpyPlayerController() {
       };
     }),
   );
-
-  // ─── Scene presentation helpers ───────────────────────────────────────────
 
   function getSpriteReferenceHeight(spriteId: string): number {
     return characterSpriteConfig.value[spriteId]?.referenceHeight ?? settings.value.spriteReferenceHeight;
@@ -833,7 +788,7 @@ export function useRenpyPlayerController() {
     { immediate: true },
   );
 
-  // ─── Sprite / camera animation class helpers ──────────────────────────────
+  // ─── Scene presentation helpers ────────────────────────────────────────────
 
   function getSpriteAnimationClass(animations?: string[]): string | undefined {
     if (effectsDisabled.value || !animations?.length) {
@@ -861,7 +816,7 @@ export function useRenpyPlayerController() {
     return undefined;
   }
 
-  // ─── Actions (selection, transport) ───────────────────────────────────────
+  // ─── Actions (selection, transport) ────────────────────────────────────────
 
   function fullSync(
     options: { rebuildIndex?: boolean; forceMessageId?: number | null } = {},
@@ -953,36 +908,16 @@ export function useRenpyPlayerController() {
     fullSync({ rebuildIndex: false });
   }
 
-  /**
-   * Handles MESSAGE_SENT events to automatically switch viewport when users send playable messages.
-   * 
-   * This function mirrors the logic of onMessageReceived() but is specifically designed for
-   * user-initiated messages. It respects the followLatestPlayable setting and generation lock
-   * exclusions, providing immediate visual feedback when users send Ren'Py commands.
-   * 
-   * @param messageId - The ID of the message that was sent by the user
-   */
+  /** Like onMessageReceived but for user-sent messages. Respects followLatestPlayable and generation lock. */
   function onMessageSent(messageId: number): void {
-    // Early return if auto-follow is disabled
-    if (!settings.value.followLatestPlayable) {
-      return;
-    }
+    if (!settings.value.followLatestPlayable) return;
+    if (excludedPlayableMessageIds.value.has(messageId)) return;
 
-    // Early return if message is excluded (e.g., during generation lock)
-    if (excludedPlayableMessageIds.value.has(messageId)) {
-      return;
-    }
-
-    // Retrieve and validate the message
     const message = getChatMessages(messageId)[0];
-    if (!isMessagePlayable(message)) {
-      return;
-    }
+    if (!isMessagePlayable(message)) return;
 
-    // Rebuild index to include the newly sent message
     rebuildPlayableIndex();
 
-    // Determine the target message (latest playable)
     const latestPlayable =
       playableMessageIds.value.length > 0
         ? playableMessageIds.value[playableMessageIds.value.length - 1]
@@ -991,7 +926,6 @@ export function useRenpyPlayerController() {
 
     const previousActiveId = activeMessageId.value;
 
-    // Only create bridge and set motion mode if actually changing messages
     if (targetId !== previousActiveId) {
       motionMode.value = 'normal';
 
@@ -1004,14 +938,12 @@ export function useRenpyPlayerController() {
       }
     }
 
-    // Update all controller state
     updateSettings(draft => {
       draft.preferredMessageId = targetId;
     });
     manualMessageId.value = targetId;
     activeMessageId.value = targetId;
 
-    // Reset to first frame if changing messages
     if (targetId !== previousActiveId) {
       frameIndex.value = 0;
     }
@@ -1032,18 +964,9 @@ export function useRenpyPlayerController() {
   }
 
   /**
-   * Handles MESSAGE_UPDATED events that occur during AI generation.
-   * 
-   * When generation is in progress, MESSAGE_UPDATED events require special handling
-   * to confirm the actual generation target and manage playable message exclusions.
-   * This function:
-   * - Confirms the generation target on first MESSAGE_UPDATED during generation
-   * - Updates excluded playable messages if the target differs from prediction
-   * - Jumps to a safe frame if the active message becomes the generation target
-   * - Returns early if the message is the confirmed generation target
-   * - Falls through to standard handling for other messages
-   * 
-   * @param messageId - The ID of the message being updated during generation
+   * Confirms generation target on first MESSAGE_UPDATED, updates exclusions,
+   * and jumps to safe frame if active message becomes the target.
+   * Falls through to onMessageChanged for non-target messages.
    */
   function handleMessageUpdatedDuringGeneration(messageId: number): void {
     const locked = generationTargetMessageId.value;
@@ -1077,32 +1000,18 @@ export function useRenpyPlayerController() {
       return;
     }
 
-    // Fall through to standard handling
     rebuildPlayableIndex();
     onMessageChanged(messageId);
   }
 
-  /**
-   * Unified handler for message modification events.
-   * 
-   * This function consolidates the logic for MESSAGE_EDITED, MESSAGE_UPDATED, and MESSAGE_SWIPED
-   * events to eliminate code duplication. It routes MESSAGE_UPDATED events during generation
-   * to special handling logic, while all other cases follow standard message change processing.
-   * 
-   * @param messageId - The ID of the modified message
-   * @param eventType - The type of event that triggered this handler (MESSAGE_EDITED, MESSAGE_UPDATED, or MESSAGE_SWIPED)
-   */
+  /** Routes MESSAGE_UPDATED during generation to special handling; otherwise rebuilds index + onMessageChanged. */
   function handleMessageModified(messageId: number, eventType: string): void {
     try {
-      console.info(`[renpy-player] Message ${eventType}: ${messageId}`);
-
-      // Special handling for MESSAGE_UPDATED during generation
       if (eventType === 'MESSAGE_UPDATED' && isGenerationInProgress.value) {
         handleMessageUpdatedDuringGeneration(messageId);
         return;
       }
 
-      // Standard handling for all other cases
       rebuildPlayableIndex();
       onMessageChanged(messageId);
     } catch (error) {
@@ -1254,47 +1163,30 @@ export function useRenpyPlayerController() {
     frameIndex.value = 0;
   }
 
-  /**
-   * VN-style phase-based click handler.
-   * 
-   * Behavior depends on current phase:
-   * - Scene phase: Ignore click (visual animations in progress)
-   * - Reveal phase: Skip to fully revealed text
-   * - Done phase: Advance to next frame if available
-   * 
-   * Requirements: 2.1, 2.2, 2.3, 2.4
-   */
+  /** VN-style click: scene→ignore, reveal→skip text, done→advance frame. */
   function onStageClick() {
     if (!hasFrames.value) {
       return;
     }
 
-    // Scene phase: ignore click (Req 2.1)
     if (phase.value === 'scene') {
-      console.info('[renpy-player] Stage click ignored (scene phase)');
       return;
     }
 
-    // Reveal phase: skip to fully revealed text (Req 2.2)
     if (phase.value === 'reveal') {
-      console.info('[renpy-player] Stage click skipping reveal (reveal phase)');
       skipReveal();
       return;
     }
 
-    // Done phase: advance to next frame if available (Req 2.3, 2.4)
     if (phase.value === 'done') {
       if (canStepForward.value) {
-        console.info('[renpy-player] Stage click advancing frame (done phase)');
         stepForwardInternal();
-      } else {
-        console.info('[renpy-player] Stage click ignored (no next frame, done phase)');
       }
       return;
     }
   }
 
-  // ─── 4) Autoplay ──────────────────────────────────────────────────────────
+  // ─── Autoplay ──────────────────────────────────────────────────────────────
 
   const canToggleAutoplay = computed(() => {
     if (isAutoplaying.value) return true;
@@ -1341,7 +1233,7 @@ export function useRenpyPlayerController() {
     nudgeManualMessageIdInternal(delta);
   }
 
-  // ─── Cross-cutting watchers ───────────────────────────────────────────────
+  // ─── Cross-cutting watchers ────────────────────────────────────────────────
 
   watch(
     frames,
@@ -1366,7 +1258,7 @@ export function useRenpyPlayerController() {
     { immediate: true },
   );
 
-  // ─── Lifecycle ────────────────────────────────────────────────────────────
+  // ─── Lifecycle ─────────────────────────────────────────────────────────────
 
   onMounted(() => {
     setupReducedMotion();
@@ -1383,7 +1275,6 @@ export function useRenpyPlayerController() {
       }).stop,
       eventOn(tavern_events.MESSAGE_SENT, (messageId: number) => {
         try {
-          console.info(`[renpy-player] Message MESSAGE_SENT: ${messageId}`);
           rebuildPlayableIndex();
           onMessageSent(messageId);
         } catch (error) {
@@ -1434,7 +1325,6 @@ export function useRenpyPlayerController() {
     }
     hudShowInProgress.value = false;
 
-    // Dispose of TransitionBus to clean up all registrations (Req 6.5, 6.6, 10.4)
     bus.dispose();
 
     isGenerationInProgress.value = false;
@@ -1442,7 +1332,7 @@ export function useRenpyPlayerController() {
     excludedPlayableMessageIds.value.clear();
   });
 
-  // ─── Public API (grouped) ─────────────────────────────────────────────────
+  // ─── Public API ────────────────────────────────────────────────────────────
 
   return reactive({
     model: {
