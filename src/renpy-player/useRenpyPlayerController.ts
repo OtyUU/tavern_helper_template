@@ -774,6 +774,10 @@ export function useRenpyPlayerController() {
       if (nextFrame !== previousFrame) {
         bus.cancelAll();
         phase.value = 'scene';
+        // Clear stale dialogue reveal state immediately so the previous frame's
+        // text is never visible during the scene-settling phase.
+        // beginReveal() will populate it again once the phase transitions to 'reveal'.
+        clearReveal();
       }
 
       applyFrame(nextFrame, effectivePrev);
