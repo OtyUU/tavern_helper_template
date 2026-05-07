@@ -484,10 +484,16 @@ export function useScenePresentation(
   function trackElementTransition(element: HTMLElement, label: string): void {
     let finished = false;
     let cleanup: (() => void) | null = null;
+    let fallbackHandle: number | null = null;
     
     const complete = () => {
       if (finished) return;
       finished = true;
+      
+      if (fallbackHandle !== null) {
+        window.clearTimeout(fallbackHandle);
+        fallbackHandle = null;
+      }
       
       if (cleanup) {
         cleanup();
@@ -544,6 +550,12 @@ export function useScenePresentation(
     // Add event listeners
     element.addEventListener('transitionend', onTransitionEnd, { once: false });
     element.addEventListener('transitioncancel', onTransitionCancel, { once: false });
+    
+    const fallbackMs = cameraTransitionMs.value + 50;
+    fallbackHandle = window.setTimeout(() => {
+      console.warn(`[useScenePresentation] ${label} fallback timeout fired`);
+      complete();
+    }, fallbackMs);
     
     console.info(`[useScenePresentation] Registered ${label} transition tracking`);
   }
@@ -627,10 +639,16 @@ export function useScenePresentation(
   function trackSpriteShellTransition(shell: HTMLElement, spriteId: string): void {
     let finished = false;
     let cleanup: (() => void) | null = null;
+    let fallbackHandle: number | null = null;
     
     const complete = () => {
       if (finished) return;
       finished = true;
+      
+      if (fallbackHandle !== null) {
+        window.clearTimeout(fallbackHandle);
+        fallbackHandle = null;
+      }
       
       if (cleanup) {
         cleanup();
@@ -671,6 +689,12 @@ export function useScenePresentation(
     // Add event listeners
     shell.addEventListener('transitionend', onTransitionEnd, { once: false });
     shell.addEventListener('transitioncancel', onTransitionCancel, { once: false });
+    
+    const fallbackMs = cameraTransitionMs.value + 50;
+    fallbackHandle = window.setTimeout(() => {
+      console.warn(`[useScenePresentation] Sprite ${spriteId} position fallback timeout fired`);
+      complete();
+    }, fallbackMs);
     
     console.info(`[useScenePresentation] Registered sprite ${spriteId} position transition tracking`);
   }

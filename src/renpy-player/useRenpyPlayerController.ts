@@ -93,6 +93,11 @@ export function useRenpyPlayerController() {
     () => prefersReducedMotion.value || motionMode.value === 'instant',
   );
 
+  // ─── HUD hide/show signal ─────────────────────────────────────────────────
+
+  const hudShowInProgress = ref(false);
+  let hudShowTimeout: number | null = null;
+
   // ─── TransitionBus ────────────────────────────────────────────────────────
   
   /**
@@ -100,6 +105,34 @@ export function useRenpyPlayerController() {
    * Created early so it can be passed to useScenePresentation and useSpriteVisibilityTransitions.
    */
   const bus = useTransitionBus();
+
+  const isHudHidden = computed(() => {
+    if (effectsDisabled.value) return false;
+    return settings.value.hudHideScope === 'all-motion'
+      ? bus.count.value > 0
+      : isSceneTransitioning.value;
+  });
+
+  watch(isHudHidden, (hidden, wasHidden) => {
+    if (hidden) {
+      if (hudShowTimeout !== null) {
+        window.clearTimeout(hudShowTimeout);
+        hudShowTimeout = null;
+      }
+      hudShowInProgress.value = false;
+      return;
+    }
+    if (!wasHidden) return;
+    if (effectsDisabled.value || settings.value.hudShowDurationMs <= 0) {
+      hudShowInProgress.value = false;
+      return;
+    }
+    hudShowInProgress.value = true;
+    hudShowTimeout = window.setTimeout(() => {
+      hudShowTimeout = null;
+      hudShowInProgress.value = false;
+    }, settings.value.hudShowDurationMs);
+  });
 
   // ─── 2) Sprite visibility transitions ────────────────────────────────────
 
@@ -417,6 +450,10 @@ export function useRenpyPlayerController() {
 
   // ─── Phase FSM ────────────────────────────────────────────────────────────
   
+  const blockReveal = computed(
+    () => !effectsDisabled.value && hudShowInProgress.value,
+  );
+
   /**
    * Phase FSM coordinates dialogue reveal timing based on animation completion.
    * Uses the TransitionBus created earlier to track in-flight visual transitions.
@@ -429,6 +466,7 @@ export function useRenpyPlayerController() {
     isFullyRevealed,
     beginReveal,
     effectsDisabled,
+    blockReveal,
   );
 
   const dialogueTextFull = computed(
@@ -537,6 +575,12 @@ export function useRenpyPlayerController() {
     '--renpy-speaker-fade-ms': effectsDisabled.value
       ? '0ms'
       : `${settings.value.speakerFadeMs}ms`,
+    '--renpy-hud-hide-ms': effectsDisabled.value ? '0ms' : `${settings.value.hudHideDurationMs}ms`,
+    '--renpy-hud-show-ms': effectsDisabled.value ? '0ms' : `${settings.value.hudShowDurationMs}ms`,
+    '--renpy-hud-hide-drift-ms': effectsDisabled.value
+      ? '0ms'
+      : `${Math.round(settings.value.hudHideDurationMs * 1.25)}ms`,
+    '--renpy-hud-drift-px': `${settings.value.hudHideDriftPx}px`,
   }));
 
   function resolveActiveCameraPreset(transform?: 'closeup' | 'medium') {
@@ -774,10 +818,12 @@ export function useRenpyPlayerController() {
       if (nextFrame !== previousFrame) {
         bus.cancelAll();
         phase.value = 'scene';
-        // Clear stale dialogue reveal state immediately so the previous frame's
-        // text is never visible during the scene-settling phase.
-        // beginReveal() will populate it again once the phase transitions to 'reveal'.
         clearReveal();
+        if (hudShowTimeout !== null) {
+          window.clearTimeout(hudShowTimeout);
+          hudShowTimeout = null;
+        }
+        hudShowInProgress.value = false;
       }
 
       applyFrame(nextFrame, effectivePrev);
@@ -1380,6 +1426,12 @@ export function useRenpyPlayerController() {
     clearTransitionTimeouts();
     clearSpriteVisibilityTransitions();
 
+    if (hudShowTimeout !== null) {
+      window.clearTimeout(hudShowTimeout);
+      hudShowTimeout = null;
+    }
+    hudShowInProgress.value = false;
+
     // Dispose of TransitionBus to clean up all registrations (Req 6.5, 6.6, 10.4)
     bus.dispose();
 
@@ -1415,6 +1467,7 @@ export function useRenpyPlayerController() {
       displayedBackground,
       renderedSprites,
       isSceneTransitioning: readonly(isSceneTransitioning),
+      isHudHidden,
       sceneFadeStyle,
       backgroundStyle,
       spriteStyle,

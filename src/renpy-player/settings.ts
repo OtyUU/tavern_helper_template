@@ -33,6 +33,10 @@ const BaseSettingsSchema = z
     sentencePauseMs: z.coerce.number().int().min(0).max(5000).default(400),
     commaPauseMs: z.coerce.number().int().min(0).max(2000).default(150),
     speakerFadeMs: z.coerce.number().int().min(0).max(2000).default(250),
+    hudHideScope: z.enum(['scene-only', 'all-motion']).default('scene-only'),
+    hudHideDurationMs: z.coerce.number().int().min(0).max(1000).default(160),
+    hudShowDurationMs: z.coerce.number().int().min(0).max(1000).default(220),
+    hudHideDriftPx: z.coerce.number().int().min(0).max(60).default(10),
 
     autoAdvanceDelayMs: z.coerce.number().int().min(0).max(30000).default(2500),
     autoPlayDelayMs: z.coerce.number().int().min(500).max(20000).default(2500),

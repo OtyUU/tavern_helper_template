@@ -269,6 +269,28 @@
       black 10%,
       black 90%,
       transparent 100%);
+  will-change: opacity, transform;
+}
+
+.renpy-player__hud-shell--visible {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--renpy-hud-show-ms) ease-out,
+    transform var(--renpy-hud-show-ms) ease-out;
+}
+
+.renpy-player__hud-shell--hidden {
+  opacity: 0;
+  transform: translateY(var(--renpy-hud-drift-px));
+  transition:
+    opacity var(--renpy-hud-hide-ms) ease-in,
+    transform var(--renpy-hud-hide-drift-ms) ease-out;
+}
+
+.renpy-player__hud-shell--hidden .renpy-player__dialogue-bar,
+.renpy-player__hud-shell--hidden .renpy-player__hud-rail {
+  pointer-events: none;
 }
 
 .renpy-player__dialogue-bar {

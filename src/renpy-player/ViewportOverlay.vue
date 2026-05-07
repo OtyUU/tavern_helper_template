@@ -8,7 +8,12 @@
       </p>
     </div>
     <template v-else>
-      <div class="renpy-player__hud-shell">
+      <div
+        class="renpy-player__hud-shell"
+        :class="controller.scene.isHudHidden
+          ? 'renpy-player__hud-shell--hidden'
+          : 'renpy-player__hud-shell--visible'"
+      >
         <div class="renpy-player__dialogue-bar">
           <div
             class="renpy-player__speaker"

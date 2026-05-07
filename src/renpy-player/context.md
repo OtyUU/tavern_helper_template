@@ -34,6 +34,7 @@ Renders a Ren'Py-like VN viewport inside the SillyTavern chat UI from LLM-produc
 | `getScriptId()` | Unique ID string of this script. |
 | `eventOn(eventType, cb)` | Subscribe to event. Returns `{ stop }`. |
 | `registerMacroLike(regex, replacer)` | Register prompt macro. Returns `{ unregister }`. |
+| `createScriptIdDiv(id)` | Creates a `<div>` with `id` attribute and returns the jQuery element. Used for mounting player and settings hosts. |
 
 **ChatMessage shape:** `{ message_id: number, name, role, is_hidden, message: string, data, extra }`
 
@@ -54,6 +55,8 @@ Renders a Ren'Py-like VN viewport inside the SillyTavern chat UI from LLM-produc
 
 ## File Map
 
+Runtime files only (test and utility files excluded):
+
 | File | Role |
 |---|---|
 | `index.ts` | Mounts apps, registers `teleportStyle()`, wires `pagehide` cleanup |
@@ -64,10 +67,10 @@ Renders a Ren'Py-like VN viewport inside the SillyTavern chat UI from LLM-produc
 | `SmartImage.vue` | Candidate waterfall loading, swap crossfade, emits `resolved` (with `naturalWidth`/`naturalHeight`) and `resolutionStatus` |
 | `DiagnosticsPanel.vue` | `<details>` diagnostics UI |
 | `SettingsPanel.vue` | Settings UI only |
-| `useRenpyPlayerController.ts` | Orchestration: store wiring, playable-index, frame/message selection, stage geometry, generation lock, lifecycle, event handlers. Integrates phase FSM and TransitionBus. Exposes grouped API: `model`, `stage`, `scene`, `dialogue`, `transport`, `selection`, `autoplay`, `diagnostics`, `phase`. All settings mutations go through `updateSettings(draft => { ... })` which `klona()`s before writing. |
+| `useRenpyPlayerController.ts` | Orchestration: store wiring, playable-index, frame/message selection, stage geometry, generation lock, lifecycle, event handlers. Integrates phase FSM and TransitionBus. Exposes grouped API: `model`, `stage`, `scene`, `dialogue`, `transport`, `selection`, `autoplay`, `diagnostics`, `phase`. `scene.isHudHidden` drives HUD hide/show CSS. All settings mutations go through `updateSettings(draft => { ... })` which `klona()`s before writing. |
 | `useTransitionBus.ts` | TransitionBus composable: lightweight registry for tracking in-flight visual transitions. Provides reactive `count`, `register()`, `cancelAll()`, and `dispose()` methods. |
-| `useFramePhase.ts` | Phase FSM composable: manages phase state machine (`scene → reveal → done`), coordinates with TransitionBus, calls `beginReveal()` at correct time, provides `isBusy` computed. |
-| `player-composables.ts` | `useScenePresentation`, `useSpriteVisibilityTransitions`, `useDialogueReveal`, `useAutoplay`, `useReducedMotion`. Scene and sprite composables register animations with TransitionBus. `useDialogueReveal` exports `beginReveal()` for phase FSM to call. |
+| `useFramePhase.ts` | Phase FSM composable: manages phase state machine (`scene → reveal → done`), coordinates with TransitionBus, calls `beginReveal()` at correct time, provides `isBusy` computed. Accepts optional `blockReveal` param to delay reveal (used by HUD show-in-progress gating). |
+| `player-composables.ts` | `useScenePresentation`, `useSpriteVisibilityTransitions`, `useDialogueReveal`, `useAutoplay`, `useReducedMotion`. Scene and sprite composables register animations with TransitionBus. `trackElementTransition` and `trackSpriteShellTransition` include fallback timeouts (`cameraTransitionMs + 50`). `useDialogueReveal` exports `beginReveal()` for phase FSM to call. |
 | `player-context.ts` | `InjectionKey` + `useRenpyPlayer()` inject helper |
 | `parser.ts` | Grammar, token resolution, `StageState`, `buildFrames()`, `getInitialState()` |
 | `types.ts` | Command, asset, frame, and state contracts |
@@ -166,6 +169,10 @@ stageHeight = 480
 - **`followLatestPlayable`** (boolean, default `true`): when true, any new playable message snaps the viewport forward.
 - **`autoAdvanceDelayMs`**: wait after reveal completes before autoplay advances. Effective total delay is `textFadeMs + autoAdvanceDelayMs` because autoplay cannot advance until `isFullyRevealed` is true.
 - **`autoPlayDelayMs`**: present in schema (500–20000, default 2500) but **not read anywhere** — dead field.
+- **`hudHideScope`** (`'scene-only' | 'all-motion'`, default `'scene-only'`): controls when the HUD hides. `'scene-only'` hides during scene crossfades (`isSceneTransitioning`); `'all-motion'` hides during any visual transition (`bus.count > 0`).
+- **`hudHideDurationMs`** (0–1000, default 160): CSS opacity/transform transition duration when HUD hides.
+- **`hudShowDurationMs`** (0–1000, default 220): CSS opacity/transform transition duration when HUD reappears. Also gates `blockReveal` — typewriter reveal waits for the HUD show animation to complete.
+- **`hudHideDriftPx`** (0–60, default 10): vertical pixel drift when HUD hides (`translateY`).
 
 ## Phase System Architecture
 
@@ -316,6 +323,44 @@ const { phase, isBusy } = inject(RenpyPlayerKey)!;
 <div :class="{ 'opacity-50': phase === 'scene' }">
 ```
 
+## HUD Hide/Show System
+
+The HUD (dialogue bar + transport rail) hides during visual motion and reappears after motion settles, creating a cinematic VN effect.
+
+### Signal Chain
+
+1. **`isHudHidden`** (computed in controller): `true` when visual motion is in progress (scope depends on `hudHideScope` setting). Returns `false` when `effectsDisabled` is true (instant/reduced-motion mode).
+2. **CSS classes**: `ViewportOverlay.vue` binds `--hidden` or `--visible` modifier class on `.renpy-player__hud-shell` based on `isHudHidden`. CSS transitions handle the opacity/transform animation using `--renpy-hud-hide-ms`, `--renpy-hud-show-ms`, `--renpy-hud-hide-drift-ms`, and `--renpy-hud-drift-px` CSS variables.
+3. **`hudShowInProgress`** (ref): becomes `true` on the hidden→visible edge for `hudShowDurationMs`, then auto-clears via `window.setTimeout`.
+4. **`blockReveal`** (computed): `!effectsDisabled && hudShowInProgress`. Passed as 8th parameter to `useFramePhase`, gating the scene→reveal transition. This delays typewriter reveal until the HUD show animation completes.
+
+### CSS Variable Mapping
+
+All four CSS variables are computed in `stageStyle` and respect `effectsDisabled` (zeroed to `0ms`/`0px`):
+- `--renpy-hud-hide-ms`: `hudHideDurationMs`
+- `--renpy-hud-show-ms`: `hudShowDurationMs`
+- `--renpy-hud-hide-drift-ms`: `Math.round(hudHideDurationMs * 1.25)` (slightly longer drift gives a natural ease-out feel)
+- `--renpy-hud-drift-px`: `hudHideDriftPx`
+
+### Timeout Cleanup
+
+- `hudShowTimeout` is cleared in `watch(currentFrame)` (frame navigation), `onScopeDispose`, and the `watch(isHudHidden)` watcher itself (re-entrant hidden edge).
+- `hudShowInProgress` is reset to `false` in all cleanup paths.
+
+### Pointer Events
+
+`.renpy-player__hud-shell` already has `pointer-events: none`. The `--hidden` modifier adds `pointer-events: none` to child `.renpy-player__dialogue-bar` and `.renpy-player__hud-rail` (which normally have `pointer-events: auto`). This prevents interaction with invisible controls during the hide animation.
+
+### Interaction with Phase FSM
+
+- `useFramePhase` accepts an optional 8th parameter `blockReveal: Ref<boolean>` (default `ref(false)`).
+- The scene→reveal watcher adds `&& !blockReveal.value` to its condition: `if (bus.count.value === 0 && !blockReveal.value)`.
+- In instant mode, `blockReveal` is always `false` (because `effectsDisabled` is true), so the gate is transparent — reveal starts immediately as before.
+
+### Fallback Timeouts
+
+`trackElementTransition` and `trackSpriteShellTransition` in `player-composables.ts` each set a fallback timeout of `cameraTransitionMs + 50` ms. If the DOM `transitionend`/`transitioncancel` event never fires (e.g., element removed, transition property mismatch), the fallback calls `complete()` and clears the bus registration. The fallback handle is cleared inside the existing `complete()` closure (idempotent via `finished` flag).
+
 ## VN-Style Input Semantics
 
 The player implements traditional visual novel click behavior where the meaning of a click depends on the current phase.
@@ -334,11 +379,11 @@ The player implements traditional visual novel click behavior where the meaning 
 
 **Phase: `'done'`** (everything complete)
 - Click **advances to next frame** (if available)
-- Calls `applyNextFrame('forward')`
+- Calls `stepForwardInternal()` (which handles both intra-message and cross-message navigation)
 - Restarts phase cycle at `'scene'` for new frame
 - Does nothing if no next frame exists
 
-**Implementation:**
+**Implementation (simplified):**
 ```typescript
 function onStageClick() {
   if (phase.value === 'scene') return;
@@ -349,23 +394,26 @@ function onStageClick() {
   }
   
   if (phase.value === 'done' && canStepForward.value) {
-    applyNextFrame('forward');
+    stepForwardInternal();
   }
 }
 ```
+
+Note: `stepForwardInternal()` takes a different code path than `applyNextFrame('forward')` when navigating across message boundaries — it sets `activeMessageId` directly instead of calling `applyNextFrame`.
 
 ### Transport Control Gating
 
 Transport buttons (step forward/backward) are gated by `isBusy`:
 
 **When `phase === 'scene'`:**
-- Step forward button: **disabled**
 - Step backward button: **disabled**
 - Prevents navigation during visual transitions
 
 **When `phase !== 'scene'`:**
 - Transport controls: **enabled**
 - User can navigate freely once scene settles
+
+Note: There is no step forward button in the HUD. Forward navigation is via stage clicks or autoplay (`transport.stepForward` is called internally by autoplay but is not wired to a visible button).
 
 **Instant mode exception:**
 - Transport controls are **never disabled**
@@ -397,11 +445,12 @@ Autoplay waits for the complete phase cycle before advancing:
 ```typescript
 const canAutoAdvanceNow = computed(() => 
   phase.value === 'done' &&
-  isFullyRevealed.value &&
   hasNextStep.value &&
   !isGenerationInProgress.value
 );
 ```
+
+Note: `isFullyRevealed` is absent here because it is implicitly guaranteed — the FSM only enters `'done'` when `isFullyRevealed` is already `true`.
 
 ### Manual Navigation Actions
 
@@ -496,5 +545,8 @@ Regenerations/swipes: `activeGenerationType` (tracked via `GENERATION_STARTED` /
 - **`beginReveal()` is called by phase FSM** — do not call it directly from other code. The phase system ensures it's called exactly once per frame at the correct time.
 - **Animation registration is mandatory** — any animation that should block dialogue reveal must register with TransitionBus. Unregistered animations will not gate phase transitions.
 - **Cleanup functions must be idempotent** — TransitionBus may call cleanup multiple times (on completion and on `cancelAll()`). Ensure cleanup functions handle repeated calls gracefully.
+- **`useFramePhase` blockReveal default** — the 8th parameter defaults to `ref(false)`. Existing 7-argument call sites are unaffected. When providing a custom `blockReveal`, it must be a `Ref<boolean>`; `computed` works because it extends `Ref`.
+- **HUD CSS variables are set in JS** — `--renpy-hud-hide-drift-ms` is computed as `Math.round(hudHideDurationMs * 1.25)` in the controller, not via CSS `calc()`. The values are zeroed when `effectsDisabled` is true.
+- **`isHudHidden` is exposed in `scene` namespace** — access via `controller.scene.isHudHidden` in components.
 
 Update this file when implemented behavior changes in a way an agent should know before editing.

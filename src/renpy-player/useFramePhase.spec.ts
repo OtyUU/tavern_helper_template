@@ -610,4 +610,92 @@ describe('useFramePhase', () => {
       expect(beginReveal).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('blockReveal gating', () => {
+    it('should stay in scene phase when blockReveal is true and bus.count is 0', async () => {
+      const blockReveal = ref(true);
+
+      const { phase } = useFramePhase(
+        bus,
+        frameIndex,
+        frames,
+        currentFrame,
+        isFullyRevealed,
+        beginReveal,
+        effectsDisabled,
+        blockReveal,
+      );
+
+      expect(phase.value).toBe('scene');
+
+      await nextTick();
+
+      expect(phase.value).toBe('scene');
+      expect(beginReveal).not.toHaveBeenCalled();
+    });
+
+    it('should transition to reveal when blockReveal transitions from true to false', async () => {
+      const blockReveal = ref(true);
+
+      const { phase } = useFramePhase(
+        bus,
+        frameIndex,
+        frames,
+        currentFrame,
+        isFullyRevealed,
+        beginReveal,
+        effectsDisabled,
+        blockReveal,
+      );
+
+      await nextTick();
+      expect(phase.value).toBe('scene');
+
+      blockReveal.value = false;
+      await nextTick();
+
+      expect(phase.value).toBe('reveal');
+      expect(beginReveal).toHaveBeenCalledTimes(1);
+    });
+
+    it('should ignore blockReveal in instant mode', async () => {
+      effectsDisabled.value = true;
+      const blockReveal = ref(true);
+
+      const { phase } = useFramePhase(
+        bus,
+        frameIndex,
+        frames,
+        currentFrame,
+        isFullyRevealed,
+        beginReveal,
+        effectsDisabled,
+        blockReveal,
+      );
+
+      expect(phase.value).toBe('scene');
+
+      await nextTick();
+
+      expect(phase.value).toBe('reveal');
+      expect(beginReveal).toHaveBeenCalledTimes(1);
+    });
+
+    it('should use default ref(false) when blockReveal is not provided', async () => {
+      const { phase } = useFramePhase(
+        bus,
+        frameIndex,
+        frames,
+        currentFrame,
+        isFullyRevealed,
+        beginReveal,
+        effectsDisabled,
+      );
+
+      await nextTick();
+
+      expect(phase.value).toBe('reveal');
+      expect(beginReveal).toHaveBeenCalledTimes(1);
+    });
+  });
 });

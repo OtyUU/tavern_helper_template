@@ -145,6 +145,30 @@
             </select>
             <small>Use <code>none</code> for instant sprite show/hide.</small>
           </div>
+
+          <div class="renpy-player-settings__field">
+            <label>HUD hide scope</label>
+            <select v-model="settings.hudHideScope" class="text_pole">
+              <option value="scene-only">Scene only</option>
+              <option value="all-motion">All motion</option>
+            </select>
+            <small>Hide HUD during scene crossfade only, or during any visual motion.</small>
+          </div>
+
+          <div class="renpy-player-settings__field">
+            <label>HUD hide duration (ms)</label>
+            <input v-model.number="settings.hudHideDurationMs" class="text_pole" type="number" min="0" max="1000" step="10" />
+          </div>
+
+          <div class="renpy-player-settings__field">
+            <label>HUD show duration (ms)</label>
+            <input v-model.number="settings.hudShowDurationMs" class="text_pole" type="number" min="0" max="1000" step="10" />
+          </div>
+
+          <div class="renpy-player-settings__field">
+            <label>HUD drift distance (px)</label>
+            <input v-model.number="settings.hudHideDriftPx" class="text_pole" type="number" min="0" max="60" step="1" />
+          </div>
         </div>
       </section>
 

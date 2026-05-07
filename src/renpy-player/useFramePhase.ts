@@ -140,6 +140,7 @@ export function useFramePhase(
   isFullyRevealed: Ref<boolean>,
   beginReveal: () => void,
   effectsDisabled: Ref<boolean>,
+  blockReveal: Ref<boolean> = ref(false),
 ): FramePhaseComposable {
   // ─── Core phase state ─────────────────────────────────────────────────────
   
@@ -187,8 +188,8 @@ export function useFramePhase(
       return;
     }
     
-    // Normal mode: wait for all animations to complete
-    if (bus.count.value === 0) {
+    // Normal mode: wait for all animations to complete and reveal not blocked
+    if (bus.count.value === 0 && !blockReveal.value) {
       console.info('[useFramePhase] Scene settled: transitioning scene → reveal');
       phase.value = 'reveal';
       beginReveal();
