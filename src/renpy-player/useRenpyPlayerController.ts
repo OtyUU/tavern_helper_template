@@ -132,6 +132,76 @@ export function useRenpyPlayerController() {
     }, settings.value.hudShowDurationMs);
   });
 
+  // ─── Message switching helpers (dedupe) ───────────────────────────────────
+
+  function switchToMessage(
+    targetId: number,
+    options: {
+      motion?: 'normal' | 'instant';
+      frameTarget?: 'first' | 'last';
+      createBridge?: boolean;
+    } = {},
+  ): void {
+    const { motion, frameTarget = 'first', createBridge = false } = options;
+    const previousActiveId = activeMessageId.value;
+
+    // If we're already on this message, do not reset frameIndex (important for fullSync behavior).
+    if (previousActiveId === targetId) {
+      updateSettings(draft => {
+        draft.preferredMessageId = targetId;
+      });
+      manualMessageId.value = targetId;
+      activeMessageId.value = targetId;
+      return;
+    }
+
+    if (motion) {
+      motionMode.value = motion;
+    }
+
+    if (createBridge) {
+      const prevFrame = currentFrame.value;
+      pendingBridge.value = prevFrame
+        ? { targetKey: cursorKey(targetId, 0), prevFrame }
+        : null;
+    } else {
+      pendingBridge.value = null;
+    }
+
+    if (frameTarget === 'last') {
+      pendingFrameTarget.value = { kind: 'last' };
+      frameIndex.value = Number.MAX_SAFE_INTEGER;
+    } else {
+      pendingFrameTarget.value = null;
+      frameIndex.value = 0;
+    }
+
+    updateSettings(draft => {
+      draft.preferredMessageId = targetId;
+    });
+    manualMessageId.value = targetId;
+    activeMessageId.value = targetId;
+  }
+
+  function maybeFollowLatestPlayable(messageId: number): void {
+    if (!settings.value.followLatestPlayable) return;
+    if (excludedPlayableMessageIds.value.has(messageId)) return;
+
+    const message = getChatMessages(messageId)[0];
+    if (!isMessagePlayable(message)) return;
+
+    const latestPlayable =
+      playableMessageIds.value.length > 0
+        ? playableMessageIds.value[playableMessageIds.value.length - 1]
+        : messageId;
+
+    switchToMessage(latestPlayable ?? messageId, {
+      motion: 'normal',
+      frameTarget: 'first',
+      createBridge: true,
+    });
+  }
+
   // ─── Sprite visibility transitions ─────────────────────────────────────────
 
   const {
@@ -157,7 +227,6 @@ export function useRenpyPlayerController() {
     previousDisplayedSprites,
     clearTransitionTimeouts,
     applyFrame,
-    setCameraTransformElement,
     setBackgroundElement,
     trackSpritePositionTransitions,
   } = useScenePresentation(
@@ -296,7 +365,7 @@ export function useRenpyPlayerController() {
     if (safeId == null) {
       pendingBridge.value = null;
       pendingFrameTarget.value = null;
-      cancelAllEffects();
+      cancelAllEffects('jumpToSafeFrameBefore: no safeId');
       activeMessageId.value = null;
       manualMessageId.value = null;
       updateSettings(draft => {
@@ -310,20 +379,13 @@ export function useRenpyPlayerController() {
       return;
     }
 
-    motionMode.value = 'instant';
-    pendingBridge.value = null;
-    cancelAllEffects();
-
+    cancelAllEffects('jumpToSafeFrameBefore');
     const shouldGoLast = safeId < excludedMessageId;
-    pendingFrameTarget.value = shouldGoLast ? { kind: 'last' } : { kind: 'first' };
-
-    updateSettings(draft => {
-      draft.preferredMessageId = safeId;
+    switchToMessage(safeId, {
+      motion: 'instant',
+      frameTarget: shouldGoLast ? 'last' : 'first',
+      createBridge: false,
     });
-    manualMessageId.value = safeId;
-    activeMessageId.value = safeId;
-
-    frameIndex.value = shouldGoLast ? Number.MAX_SAFE_INTEGER : 0;
   }
 
   function beginGenerationLock(
@@ -458,7 +520,7 @@ export function useRenpyPlayerController() {
    * Phase FSM coordinates dialogue reveal timing based on animation completion.
    * Uses the TransitionBus created earlier to track in-flight visual transitions.
    */
-  const { phase, isBusy: phaseBusy, applyNextFrame, applyFrameIndex } = useFramePhase(
+  const { phase, isBusy: phaseBusy, resetToScene, applyNextFrame, applyFrameIndex } = useFramePhase(
     bus,
     frameIndex,
     frames,
@@ -767,14 +829,8 @@ export function useRenpyPlayerController() {
         pendingBridge.value = null;
       }
 
-      // Reset phase to 'scene' when frame changes
-      // This handles both frameIndex changes (via applyNextFrame) and message switches
-      // Note: applyNextFrame() also calls bus.cancelAll() before changing frameIndex,
-      // so in-flight transitions are already cancelled for normal navigation.
-      // For message switches, we also need to cancel and reset phase.
       if (nextFrame !== previousFrame) {
-        bus.cancelAll();
-        phase.value = 'scene';
+        resetToScene('currentFrame changed');
         clearReveal();
         if (hudShowTimeout !== null) {
           window.clearTimeout(hudShowTimeout);
@@ -860,43 +916,7 @@ export function useRenpyPlayerController() {
 
   function onMessageReceived(messageId: number) {
     if (settings.value.followLatestPlayable) {
-      if (excludedPlayableMessageIds.value.has(messageId)) {
-        return;
-      }
-
-      const message = getChatMessages(messageId)[0];
-      if (!isMessagePlayable(message)) return;
-
-      const latestPlayable =
-        playableMessageIds.value.length > 0
-          ? playableMessageIds.value[playableMessageIds.value.length - 1]
-          : messageId;
-      const targetId = latestPlayable ?? messageId;
-
-      const previousActiveId = activeMessageId.value;
-
-      if (targetId !== previousActiveId) {
-        motionMode.value = 'normal';
-
-        const prevFrame = currentFrame.value;
-        if (prevFrame) {
-          pendingBridge.value = {
-            targetKey: cursorKey(targetId, 0),
-            prevFrame,
-          };
-        }
-      }
-
-      updateSettings(draft => {
-        draft.preferredMessageId = targetId;
-      });
-      manualMessageId.value = targetId;
-      activeMessageId.value = targetId;
-
-      if (targetId !== previousActiveId) {
-        frameIndex.value = 0;
-      }
-
+      maybeFollowLatestPlayable(messageId);
       return;
     }
 
@@ -910,43 +930,7 @@ export function useRenpyPlayerController() {
 
   /** Like onMessageReceived but for user-sent messages. Respects followLatestPlayable and generation lock. */
   function onMessageSent(messageId: number): void {
-    if (!settings.value.followLatestPlayable) return;
-    if (excludedPlayableMessageIds.value.has(messageId)) return;
-
-    const message = getChatMessages(messageId)[0];
-    if (!isMessagePlayable(message)) return;
-
-    rebuildPlayableIndex();
-
-    const latestPlayable =
-      playableMessageIds.value.length > 0
-        ? playableMessageIds.value[playableMessageIds.value.length - 1]
-        : messageId;
-    const targetId = latestPlayable ?? messageId;
-
-    const previousActiveId = activeMessageId.value;
-
-    if (targetId !== previousActiveId) {
-      motionMode.value = 'normal';
-
-      const prevFrame = currentFrame.value;
-      if (prevFrame) {
-        pendingBridge.value = {
-          targetKey: cursorKey(targetId, 0),
-          prevFrame,
-        };
-      }
-    }
-
-    updateSettings(draft => {
-      draft.preferredMessageId = targetId;
-    });
-    manualMessageId.value = targetId;
-    activeMessageId.value = targetId;
-
-    if (targetId !== previousActiveId) {
-      frameIndex.value = 0;
-    }
+    maybeFollowLatestPlayable(messageId);
   }
 
   function onMessageChanged(messageId: number) {
@@ -1066,9 +1050,11 @@ export function useRenpyPlayerController() {
     if (targetId === null) return;
     manualMessageId.value = targetId;
 
-    motionMode.value = 'instant';
-
-    selectMessage(targetId);
+    switchToMessage(targetId, {
+      motion: 'instant',
+      frameTarget: 'first',
+      createBridge: false,
+    });
   }
 
   function onManualMessageInput(event: Event) {
@@ -1087,7 +1073,8 @@ export function useRenpyPlayerController() {
     motionMode.value = targetIndex < frameIndex.value ? 'instant' : 'normal';
   }
 
-  function cancelAllEffects() {
+  function cancelAllEffects(reason?: string) {
+    resetToScene(reason ?? 'cancelAllEffects');
     clearReveal();
     clearTransitionTimeouts();
     clearSpriteVisibilityTransitions();
@@ -1114,17 +1101,8 @@ export function useRenpyPlayerController() {
       return;
     }
 
-    motionMode.value = 'instant';
-    cancelAllEffects();
-
-    pendingFrameTarget.value = { kind: 'last' };
-    updateSettings(draft => {
-      draft.preferredMessageId = prevId;
-    });
-    manualMessageId.value = prevId;
-    activeMessageId.value = prevId;
-
-    frameIndex.value = Number.MAX_SAFE_INTEGER;
+    cancelAllEffects('stepBackwardInternal: cross-message');
+    switchToMessage(prevId, { motion: 'instant', frameTarget: 'last', createBridge: false });
   }
 
   function stepForwardInternal() {
@@ -1145,22 +1123,7 @@ export function useRenpyPlayerController() {
       return;
     }
 
-    motionMode.value = 'normal';
-
-    const prevFrame = currentFrame.value;
-    if (prevFrame) {
-      pendingBridge.value = {
-        targetKey: cursorKey(nextId, 0),
-        prevFrame,
-      };
-    }
-
-    updateSettings(draft => {
-      draft.preferredMessageId = nextId;
-    });
-    manualMessageId.value = nextId;
-    activeMessageId.value = nextId;
-    frameIndex.value = 0;
+    switchToMessage(nextId, { motion: 'normal', frameTarget: 'first', createBridge: true });
   }
 
   /** VN-style click: scene→ignore, reveal→skip text, done→advance frame. */
@@ -1195,7 +1158,6 @@ export function useRenpyPlayerController() {
 
   const { isAutoplaying, stopAutoplay, toggleAutoplay } = useAutoplay(
     frames,
-    frameIndex,
     canToggleAutoplay,
     canAutoAdvanceNow,
     autoAdvanceDelayMs,
@@ -1368,7 +1330,6 @@ export function useRenpyPlayerController() {
       onSpriteEnter,
       onSpriteLeave,
       onSpriteResolved,
-      setCameraTransformElement,
       setBackgroundElement,
       trackSpritePositionTransitions,
     },

@@ -238,7 +238,6 @@ export function useSpriteVisibilityTransitions(
 
 export function useAutoplay(
   frames: Ref<PlayerFrame[]>,
-  frameIndex: Ref<number>,
   canStartAutoplay: Ref<boolean>,
   canAutoAdvanceNow: Ref<boolean>,
   autoAdvanceDelayMs: Ref<number>,
@@ -344,7 +343,6 @@ export function useScenePresentation(
   const displayedCameraAnimations = ref<PlayerFrame['cameraAnimations']>(undefined);
   const previousDisplayedSprites = ref<PlayerFrame['sprites']>([]);
   const transitionTimeouts = ref<number[]>([]);
-  const cameraTransformElement = ref<HTMLElement | null>(null);
   const backgroundElement = ref<HTMLElement | null>(null);
 
   watch(displayedSprites, (_nextSprites, previousSprites) => {
@@ -521,11 +519,6 @@ export function useScenePresentation(
     }, fallbackMs);
   }
   
-  /** Called from SceneLayer to provide the camera transform element ref. */
-  function setCameraTransformElement(element: HTMLElement | null): void {
-    cameraTransformElement.value = element;
-  }
-  
   /** Called from SceneLayer to provide the background element ref. */
   function setBackgroundElement(element: HTMLElement | null): void {
     backgroundElement.value = element;
@@ -633,7 +626,6 @@ export function useScenePresentation(
     previousDisplayedSprites,
     clearTransitionTimeouts,
     applyFrame,
-    setCameraTransformElement,
     setBackgroundElement,
     trackSpritePositionTransitions,
   };

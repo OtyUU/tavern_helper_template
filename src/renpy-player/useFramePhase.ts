@@ -13,6 +13,8 @@ export type FramePhase = 'scene' | 'reveal' | 'done';
 export interface FramePhaseComposable {
   readonly phase: Ref<FramePhase>;
   readonly isBusy: Ref<boolean>;
+  /** Cancels in-flight transitions and resets phase to 'scene'. */
+  resetToScene(reason?: string): void;
   applyNextFrame(direction: 'forward' | 'backward'): void;
   applyFrameIndex(targetIndex: number): void;
 }
@@ -29,6 +31,12 @@ export function useFramePhase(
 ): FramePhaseComposable {
   const phase = ref<FramePhase>('scene');
   const isBusy = computed(() => phase.value === 'scene');
+
+  function resetToScene(reason?: string): void {
+    console.info('[useFramePhase] resetToScene:', { reason });
+    bus.cancelAll();
+    phase.value = 'scene';
+  }
 
   const stopSceneWatcher = watchEffect(() => {
     if (phase.value !== 'scene') return;
@@ -64,9 +72,8 @@ export function useFramePhase(
   }, { flush: 'post' });
 
   function applyNextFrame(direction: 'forward' | 'backward'): void {
-    console.info(`[useFramePhase] applyNextFrame(${direction}): cancelling in-flight work`);
-    bus.cancelAll();
-    phase.value = 'scene';
+    console.info(`[useFramePhase] applyNextFrame(${direction})`);
+    resetToScene(`applyNextFrame:${direction}`);
 
     if (direction === 'forward') {
       frameIndex.value = Math.min(frameIndex.value + 1, frames.value.length - 1);
@@ -78,9 +85,8 @@ export function useFramePhase(
   }
 
   function applyFrameIndex(targetIndex: number): void {
-    console.info(`[useFramePhase] applyFrameIndex(${targetIndex}): cancelling in-flight work`);
-    bus.cancelAll();
-    phase.value = 'scene';
+    console.info(`[useFramePhase] applyFrameIndex(${targetIndex})`);
+    resetToScene('applyFrameIndex');
     frameIndex.value = Math.max(0, Math.min(targetIndex, frames.value.length - 1));
     console.info(`[useFramePhase] Frame index now: ${frameIndex.value}, phase: ${phase.value}`);
   }
@@ -94,6 +100,7 @@ export function useFramePhase(
   return {
     phase,
     isBusy,
+    resetToScene,
     applyNextFrame,
     applyFrameIndex,
   };
