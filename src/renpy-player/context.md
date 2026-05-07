@@ -64,8 +64,10 @@ Renders a Ren'Py-like VN viewport inside the SillyTavern chat UI from LLM-produc
 | `SmartImage.vue` | Candidate waterfall loading, swap crossfade, emits `resolved` (with `naturalWidth`/`naturalHeight`) and `resolutionStatus` |
 | `DiagnosticsPanel.vue` | `<details>` diagnostics UI |
 | `SettingsPanel.vue` | Settings UI only |
-| `useRenpyPlayerController.ts` | Orchestration: store wiring, playable-index, frame/message selection, stage geometry, generation lock, lifecycle, event handlers. Exposes grouped API: `model`, `stage`, `scene`, `dialogue`, `transport`, `selection`, `autoplay`, `diagnostics`. All settings mutations go through `updateSettings(draft => { ... })` which `klona()`s before writing. |
-| `player-composables.ts` | `useScenePresentation`, `useSpriteVisibilityTransitions`, `useDialogueReveal`, `useAutoplay`, `useReducedMotion` |
+| `useRenpyPlayerController.ts` | Orchestration: store wiring, playable-index, frame/message selection, stage geometry, generation lock, lifecycle, event handlers. Integrates phase FSM and TransitionBus. Exposes grouped API: `model`, `stage`, `scene`, `dialogue`, `transport`, `selection`, `autoplay`, `diagnostics`, `phase`. All settings mutations go through `updateSettings(draft => { ... })` which `klona()`s before writing. |
+| `useTransitionBus.ts` | TransitionBus composable: lightweight registry for tracking in-flight visual transitions. Provides reactive `count`, `register()`, `cancelAll()`, and `dispose()` methods. |
+| `useFramePhase.ts` | Phase FSM composable: manages phase state machine (`scene → reveal → done`), coordinates with TransitionBus, calls `beginReveal()` at correct time, provides `isBusy` computed. |
+| `player-composables.ts` | `useScenePresentation`, `useSpriteVisibilityTransitions`, `useDialogueReveal`, `useAutoplay`, `useReducedMotion`. Scene and sprite composables register animations with TransitionBus. `useDialogueReveal` exports `beginReveal()` for phase FSM to call. |
 | `player-context.ts` | `InjectionKey` + `useRenpyPlayer()` inject helper |
 | `parser.ts` | Grammar, token resolution, `StageState`, `buildFrames()`, `getInitialState()` |
 | `types.ts` | Command, asset, frame, and state contracts |
@@ -165,6 +167,252 @@ stageHeight = 480
 - **`autoAdvanceDelayMs`**: wait after reveal completes before autoplay advances. Effective total delay is `textFadeMs + autoAdvanceDelayMs` because autoplay cannot advance until `isFullyRevealed` is true.
 - **`autoPlayDelayMs`**: present in schema (500–20000, default 2500) but **not read anywhere** — dead field.
 
+## Phase System Architecture
+
+The player uses a **phase-based state machine** to coordinate visual animations and dialogue reveal timing. This ensures dialogue text waits for visual motion to settle before starting typewriter reveal, creating an immersive VN experience.
+
+### Phase FSM (Finite State Machine)
+
+Three phases govern frame playback:
+
+1. **`'scene'`** — Visual animations are settling (scene crossfade, sprite transitions, camera effects, CSS positioning). Dialogue reveal is blocked. Transport controls are disabled. Stage clicks are ignored.
+
+2. **`'reveal'`** — Visual motion has settled. Typewriter reveal is active or ready to skip. Transport controls are enabled. Stage clicks skip to fully revealed text.
+
+3. **`'done'`** — Everything is complete (visuals settled, text fully revealed). Ready to advance to next frame. Stage clicks advance frame. Autoplay can proceed.
+
+**Phase Transition Rules:**
+- Phases always follow the sequence: `scene → reveal → done`
+- Phases never skip states (except instant mode: `scene → reveal` directly)
+- Every frame advance resets phase to `'scene'`
+- `beginReveal()` is called exactly once when entering `'reveal'` phase
+
+### TransitionBus
+
+A lightweight registry that tracks in-flight visual transitions. Provides a reactive `count` ref that equals the number of registered animations.
+
+**Core API:**
+```typescript
+interface TransitionBus {
+  register(cancel: () => void): () => void;  // Returns cleanup function
+  cancelAll(): void;                          // Cancel all registered transitions
+  dispose(): void;                            // Cleanup on unmount
+  readonly count: Ref<number>;                // Reactive count of in-flight transitions
+}
+```
+
+**Usage Pattern:**
+```typescript
+// In animation composable
+const cleanup = bus.register(() => {
+  clearTimeout(handle);
+  animation.cancel();
+});
+
+// Auto-cleanup when animation completes
+animation.addEventListener('finish', () => {
+  cleanup();
+}, { once: true });
+```
+
+**When `bus.count` reaches 0**, the phase FSM transitions from `'scene'` to `'reveal'` and calls `beginReveal()`.
+
+### Registering New Animation Types
+
+To add a new animation type that blocks dialogue reveal:
+
+1. **Accept `bus` parameter** in your composable
+2. **Register cancellation** when starting the animation
+3. **Auto-cleanup** when animation completes or is cancelled
+
+**Example: Scene Crossfade Registration**
+```typescript
+function applyFrame(next: PlayerFrame | null, prev: PlayerFrame | null): void {
+  if (!next?.isNewScene || effectsDisabled.value) {
+    applyDisplayedFrame(next);
+    return;
+  }
+  
+  const duration = settings.value.sceneTransitionMs;
+  isSceneTransitioning.value = true;
+  
+  const handle = setTimeout(() => {
+    updateDisplayedSprites(next.sprites);
+    isSceneTransitioning.value = false;
+  }, duration);
+  
+  // Register with bus
+  const cleanup = bus.register(() => {
+    clearTimeout(handle);
+    isSceneTransitioning.value = false;
+  });
+  
+  // Auto-cleanup when complete
+  setTimeout(() => cleanup(), duration);
+}
+```
+
+**Example: Web Animation Registration**
+```typescript
+function onSpriteEnter(el: Element, done: () => void) {
+  const animation = el.animate([...], { duration });
+  
+  const cleanup = bus.register(() => animation.cancel());
+  
+  animation.addEventListener('finish', () => {
+    cleanup();
+    done();
+  }, { once: true });
+  
+  animation.addEventListener('cancel', () => {
+    cleanup();
+    done();
+  }, { once: true });
+}
+```
+
+**Example: CSS Transition Registration**
+```typescript
+function trackCameraTransition(el: HTMLElement) {
+  const cleanup = bus.register(() => {
+    el.removeEventListener('transitionend', handler);
+  });
+  
+  const handler = () => cleanup();
+  el.addEventListener('transitionend', handler, { once: true });
+}
+```
+
+### Instant Mode Behavior
+
+When `effectsDisabled` is true (reduced motion or instant mode):
+- Phase transitions directly from `'scene'` to `'reveal'` without waiting for `bus.count === 0`
+- `beginReveal()` is called immediately
+- No animations register with the bus
+- Transport controls are never disabled
+- Frame application completes in <1ms
+
+### Phase-Based UI Logic
+
+**`isBusy` Computed:**
+```typescript
+const isBusy = computed(() => phase.value === 'scene');
+```
+
+Use `isBusy` to gate UI elements:
+- Disable transport buttons when `isBusy`
+- Show loading indicators when `isBusy`
+- Prevent user actions during scene settlement
+
+**Phase-Aware Components:**
+```typescript
+// In a Vue component
+const { phase, isBusy } = inject(RenpyPlayerKey)!;
+
+// Conditional rendering
+<button :disabled="isBusy">Next Frame</button>
+
+// Phase-specific styling
+<div :class="{ 'opacity-50': phase === 'scene' }">
+```
+
+## VN-Style Input Semantics
+
+The player implements traditional visual novel click behavior where the meaning of a click depends on the current phase.
+
+### Stage Click Behavior
+
+**Phase: `'scene'`** (visual animations settling)
+- Click is **ignored**
+- Prevents accidental interruption of visual transitions
+- User must wait for animations to complete
+
+**Phase: `'reveal'`** (typewriter revealing text)
+- Click **skips to fully revealed text**
+- Calls `skipReveal()` to instantly show all remaining characters
+- Phase transitions to `'done'` when skip completes
+
+**Phase: `'done'`** (everything complete)
+- Click **advances to next frame** (if available)
+- Calls `applyNextFrame('forward')`
+- Restarts phase cycle at `'scene'` for new frame
+- Does nothing if no next frame exists
+
+**Implementation:**
+```typescript
+function onStageClick() {
+  if (phase.value === 'scene') return;
+  
+  if (phase.value === 'reveal') {
+    skipReveal();
+    return;
+  }
+  
+  if (phase.value === 'done' && canStepForward.value) {
+    applyNextFrame('forward');
+  }
+}
+```
+
+### Transport Control Gating
+
+Transport buttons (step forward/backward) are gated by `isBusy`:
+
+**When `phase === 'scene'`:**
+- Step forward button: **disabled**
+- Step backward button: **disabled**
+- Prevents navigation during visual transitions
+
+**When `phase !== 'scene'`:**
+- Transport controls: **enabled**
+- User can navigate freely once scene settles
+
+**Instant mode exception:**
+- Transport controls are **never disabled**
+- `isBusy` is always false in instant mode
+
+### Autoplay Coordination
+
+Autoplay waits for the complete phase cycle before advancing:
+
+**Phase: `'scene'`**
+- Autoplay **waits** (does not advance)
+- Allows visual animations to complete
+
+**Phase: `'reveal'`**
+- Autoplay **waits** (does not advance)
+- Allows typewriter reveal to complete
+
+**Phase: `'done'`**
+- Autoplay **can advance** after configured delay
+- `canAutoAdvanceNow` checks `phase === 'done'`
+- Effective delay = `textFadeMs + autoAdvanceDelayMs`
+
+**Frame advance behavior:**
+- When autoplay advances, phase resets to `'scene'`
+- Phase cycle restarts for the new frame
+- Autoplay continues waiting through the new cycle
+
+**Implementation:**
+```typescript
+const canAutoAdvanceNow = computed(() => 
+  phase.value === 'done' &&
+  isFullyRevealed.value &&
+  hasNextStep.value &&
+  !isGenerationInProgress.value
+);
+```
+
+### Manual Navigation Actions
+
+All manual navigation actions **stop autoplay**:
+- Transport button clicks (step forward/backward)
+- Jump-to-latest button
+- Message stepper navigation
+- Typed message ID application
+
+**Stage clicks do NOT stop autoplay** — they skip reveal or advance frame as part of the autoplay flow.
+
 ## Controller Architecture
 
 ### `updateSettings(draft => { ... })`
@@ -188,7 +436,7 @@ The **only** way controller code mutates `settings.value`. Clones via `klona()`,
 `pendingBridge: { targetKey: string; prevFrame: PlayerFrame } | null` supplies the correct `prevFrame` to `applyFrame` when changing messages, so scene transitions animate against the last frame of the prior message rather than `null`. Set just before `activeMessageId` changes in `stepForwardInternal`, `onMessageReceived` (follow-latest), and the follow-latest nudge in `useLatestPlayable`. Consumed and cleared in `watch(currentFrame)` when the key matches.
 
 ### `isBusy`
-`computed(() => isSceneTransitioning.value)`. Gates `canStepForward`, start of `canToggleAutoplay`, and the advance path in `onStageClick`.
+`computed(() => phase.value === 'scene')`. Gates `canStepForward`, `canStepBackward`, start of `canToggleAutoplay`, and the advance path in `onStageClick`. When true, visual animations are settling and user navigation is blocked.
 
 ### Generation Safe-Frame Lock
 - **`GENERATION_STARTED`** (non-dry-run, non-quiet): predicts target message ID — if last message is `role:'user'`, predict `last + 1`; else predict `last`. Adds to `excludedPlayableMessageIds`; rebuilds index; if current viewport is on the excluded ID, calls `jumpToSafeFrameBefore` (sets `motionMode = 'instant'`).
@@ -244,5 +492,9 @@ Regenerations/swipes: `activeGenerationType` (tracked via `GENERATION_STARTED` /
 - **Speaker display** uses `displayedSpeaker` (managed by `useDialogueReveal`), not a direct computed from the current frame. Three-way transition: appear (fade in via `speakerFadeMs`), disappear (fade out, then clear after `speakerFadeMs`), no change (instant update).
 - **Effective autoplay delay** = `textFadeMs + autoAdvanceDelayMs`. Autoplay will not advance until `isFullyRevealed` is true.
 - **`pendingFrameTarget { kind: 'last' }` uses `Number.MAX_SAFE_INTEGER`** as a sentinel for `frameIndex`; the `watch(frames)` handler clamps it.
+- **Phase transitions are automatic** — do not manually set `phase.value`. The phase FSM manages transitions based on `bus.count` and `isFullyRevealed`.
+- **`beginReveal()` is called by phase FSM** — do not call it directly from other code. The phase system ensures it's called exactly once per frame at the correct time.
+- **Animation registration is mandatory** — any animation that should block dialogue reveal must register with TransitionBus. Unregistered animations will not gate phase transitions.
+- **Cleanup functions must be idempotent** — TransitionBus may call cleanup multiple times (on completion and on `cancelAll()`). Ensure cleanup functions handle repeated calls gracefully.
 
 Update this file when implemented behavior changes in a way an agent should know before editing.

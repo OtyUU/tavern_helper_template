@@ -466,14 +466,12 @@ export function useScenePresentation(
       duration: cameraTransitionMs.value,
     });
     
-    // Track background element transition
+    // Track background element transition (background scale changes with camera transform)
+    // Note: We only track the background element because the scene layer itself doesn't
+    // have a CSS transition - it's just a container. The background element has the
+    // actual transform transition that we need to wait for.
     if (backgroundElement.value) {
-      trackElementTransition(backgroundElement.value, 'background transform');
-    }
-    
-    // Track camera transform element (scene layer) if available
-    if (cameraTransformElement.value) {
-      trackElementTransition(cameraTransformElement.value, 'camera transform');
+      trackElementTransition(backgroundElement.value, 'camera transform (background)');
     }
   }
   
@@ -503,6 +501,14 @@ export function useScenePresentation(
     };
     
     const onTransitionEnd = (event: TransitionEvent) => {
+      console.info(`[useScenePresentation] transitionend event:`, {
+        label,
+        target: event.target,
+        element,
+        isSameTarget: event.target === element,
+        propertyName: event.propertyName,
+      });
+      
       // Only handle transitions on this element (not bubbled from children)
       if (event.target !== element) return;
       
@@ -513,6 +519,14 @@ export function useScenePresentation(
     };
     
     const onTransitionCancel = (event: TransitionEvent) => {
+      console.info(`[useScenePresentation] transitioncancel event:`, {
+        label,
+        target: event.target,
+        element,
+        isSameTarget: event.target === element,
+        propertyName: event.propertyName,
+      });
+      
       // Only handle transitions on this element (not bubbled from children)
       if (event.target !== element) return;
       

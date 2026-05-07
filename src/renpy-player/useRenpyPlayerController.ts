@@ -458,11 +458,25 @@ export function useRenpyPlayerController() {
     () => hasFrames.value && (frameIndex.value < frames.value.length - 1 || nextPlayableId.value !== null),
   );
 
+  /**
+   * Determines if autoplay can advance to the next frame.
+   * 
+   * Autoplay waits for:
+   * - Scene phase: Visual animations to complete (Req 5.1)
+   * - Reveal phase: Dialogue reveal to complete (Req 5.2)
+   * - Done phase: Everything complete, ready to advance (Req 5.3)
+   * 
+   * Also checks:
+   * - hasFrames: Must have frames to play
+   * - hasNextStep: Must have a next frame to advance to
+   * - !isGenerationInProgress: Must not be generating new content
+   * 
+   * Requirements: 5.1, 5.2, 5.3
+   */
   const canAutoAdvanceNow = computed(
     () =>
       hasFrames.value &&
-      !isSceneTransitioning.value &&
-      isFullyRevealed.value &&
+      phase.value === 'done' &&  // Phase-based gating: only advance when everything is complete
       hasNextStep.value &&
       !isGenerationInProgress.value,
   );
@@ -577,6 +591,60 @@ export function useRenpyPlayerController() {
     ];
     return parts.join(', ');
   });
+
+  // ─── Camera shake tracking ────────────────────────────────────────────────
+
+  /**
+   * Camera shake duration in milliseconds (matches CSS animation duration).
+   * Defined in renpy-player.scss: .renpy-player__scene-layer--shake
+   */
+  const CAMERA_SHAKE_DURATION_MS = 450;
+
+  /**
+   * Track camera shake animations and register them with the TransitionBus.
+   * When a shake animation starts, register a timeout with the bus that will
+   * auto-cleanup when the animation completes.
+   */
+  watch(
+    cameraAnimationClass,
+    (newClass, oldClass) => {
+      console.info('[renpy-player] Camera animation class changed:', { newClass, oldClass, effectsDisabled: effectsDisabled.value });
+      
+      // Only track when shake class is applied (not when removed)
+      if (newClass !== 'renpy-player__scene-layer--shake') {
+        return;
+      }
+
+      // Skip registration if effects are disabled (reduced motion or instant mode)
+      if (effectsDisabled.value) {
+        console.info('[renpy-player] Camera shake skipped (effects disabled)');
+        return;
+      }
+
+      // Skip if this is the same class (no actual change)
+      if (newClass === oldClass) {
+        console.info('[renpy-player] Camera shake skipped (same class)');
+        return;
+      }
+
+      // Register cancellation with bus first
+      let timeoutHandle: number | undefined;
+      const cleanup = bus.register(() => {
+        if (timeoutHandle !== undefined) {
+          window.clearTimeout(timeoutHandle);
+        }
+      });
+
+      // Schedule cleanup for when shake completes
+      timeoutHandle = window.setTimeout(() => {
+        console.info('[renpy-player] Camera shake completed, cleaning up');
+        cleanup();
+      }, CAMERA_SHAKE_DURATION_MS);
+
+      console.info('[renpy-player] Camera shake registered with TransitionBus', { busCount: bus.count.value });
+    },
+    { flush: 'post' }
+  );
 
   const renderedSprites = computed(() =>
     (displayedSprites.value ?? []).map(sprite => {
@@ -1134,17 +1202,44 @@ export function useRenpyPlayerController() {
     frameIndex.value = 0;
   }
 
+  /**
+   * VN-style phase-based click handler.
+   * 
+   * Behavior depends on current phase:
+   * - Scene phase: Ignore click (visual animations in progress)
+   * - Reveal phase: Skip to fully revealed text
+   * - Done phase: Advance to next frame if available
+   * 
+   * Requirements: 2.1, 2.2, 2.3, 2.4
+   */
   function onStageClick() {
-    if (!hasFrames.value || isBusy.value) {
+    if (!hasFrames.value) {
       return;
     }
 
-    if (isRevealing.value) {
+    // Scene phase: ignore click (Req 2.1)
+    if (phase.value === 'scene') {
+      console.info('[renpy-player] Stage click ignored (scene phase)');
+      return;
+    }
+
+    // Reveal phase: skip to fully revealed text (Req 2.2)
+    if (phase.value === 'reveal') {
+      console.info('[renpy-player] Stage click skipping reveal (reveal phase)');
       skipReveal();
       return;
     }
 
-    stepForwardInternal();
+    // Done phase: advance to next frame if available (Req 2.3, 2.4)
+    if (phase.value === 'done') {
+      if (canStepForward.value) {
+        console.info('[renpy-player] Stage click advancing frame (done phase)');
+        stepForwardInternal();
+      } else {
+        console.info('[renpy-player] Stage click ignored (no next frame, done phase)');
+      }
+      return;
+    }
   }
 
   // ─── 4) Autoplay ──────────────────────────────────────────────────────────
@@ -1280,6 +1375,9 @@ export function useRenpyPlayerController() {
     clearReveal();
     clearTransitionTimeouts();
     clearSpriteVisibilityTransitions();
+
+    // Dispose of TransitionBus to clean up all registrations (Req 6.5, 6.6, 10.4)
+    bus.dispose();
 
     isGenerationInProgress.value = false;
     generationTargetMessageId.value = null;
