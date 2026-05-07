@@ -67,10 +67,10 @@ Runtime files only (test and utility files excluded):
 | `SmartImage.vue` | Candidate waterfall loading, swap crossfade, emits `resolved` (with `naturalWidth`/`naturalHeight`) and `resolutionStatus` |
 | `DiagnosticsPanel.vue` | `<details>` diagnostics UI |
 | `SettingsPanel.vue` | Settings UI only |
-| `useRenpyPlayerController.ts` | Orchestration: store wiring, playable-index, frame/message selection, stage geometry, generation lock, lifecycle, event handlers. Integrates phase FSM and TransitionBus. Exposes grouped API: `model`, `stage`, `scene`, `dialogue`, `transport`, `selection`, `autoplay`, `diagnostics`, `phase`. `scene.isHudHidden` drives HUD hide/show CSS. All settings mutations go through `updateSettings(draft => { ... })` which `klona()`s before writing. |
+| `useRenpyPlayerController.ts` | Orchestration: store wiring, playable-index, frame/message selection, stage geometry, generation lock, lifecycle, event handlers. Integrates phase FSM and TransitionBus. Camera presentation computeds (`backgroundStyle`, `spriteStyle`, `cameraAnimationClass`, `cameraDiagnosticsLabel`) read from **displayed** camera state (`displayedCameraTransform` / `displayedCameraAnimations`), not `currentFrame`, so they update at the correct moment during scene crossfades. `--renpy-camera-transition-ms` is zeroed during `isSceneTransitioning` to prevent camera transforms from animating under the fade overlay. Exposes grouped API: `model`, `stage`, `scene`, `dialogue`, `transport`, `selection`, `autoplay`, `diagnostics`, `phase`. `scene.isHudHidden` drives HUD hide/show CSS. All settings mutations go through `updateSettings(draft => { ... })` which `klona()`s before writing. |
 | `useTransitionBus.ts` | TransitionBus composable: lightweight registry for tracking in-flight visual transitions. Provides reactive `count`, `register()`, `cancelAll()`, and `dispose()` methods. |
 | `useFramePhase.ts` | Phase FSM composable: manages phase state machine (`scene → reveal → done`), coordinates with TransitionBus, calls `beginReveal()` at correct time, provides `isBusy` computed. Accepts optional `blockReveal` param to delay reveal (used by HUD show-in-progress gating). |
-| `player-composables.ts` | `useScenePresentation`, `useSpriteVisibilityTransitions`, `useDialogueReveal`, `useAutoplay`, `useReducedMotion`. Scene and sprite composables register animations with TransitionBus. `trackElementTransition` and `trackSpriteShellTransition` include fallback timeouts (`cameraTransitionMs + 50`). `useDialogueReveal` exports `beginReveal()` for phase FSM to call. |
+| `player-composables.ts` | `useScenePresentation`, `useSpriteVisibilityTransitions`, `useDialogueReveal`, `useAutoplay`, `useReducedMotion`. Scene presentation exposes `displayedCameraTransform` / `displayedCameraAnimations` (decoupled from `currentFrame` reactivity) so camera state commits at the correct moment during scene crossfades (transform at midpoint, animations at final). Scene and sprite composables register animations with TransitionBus. `trackElementTransition` and `trackSpriteShellTransition` include fallback timeouts (`cameraTransitionMs + 50`). `useDialogueReveal` exports `beginReveal()` for phase FSM to call. |
 | `player-context.ts` | `InjectionKey` + `useRenpyPlayer()` inject helper |
 | `parser.ts` | Grammar, token resolution, `StageState`, `buildFrames()`, `getInitialState()` |
 | `types.ts` | Command, asset, frame, and state contracts |
@@ -240,22 +240,35 @@ function applyFrame(next: PlayerFrame | null, prev: PlayerFrame | null): void {
     return;
   }
   
-  const duration = settings.value.sceneTransitionMs;
+  const halfDuration = Math.floor(settings.value.sceneTransitionMs / 2);
+  const fullDuration = settings.value.sceneTransitionMs;
   isSceneTransitioning.value = true;
+  displayedCameraAnimations.value = undefined;
   
-  const handle = setTimeout(() => {
-    updateDisplayedSprites(next.sprites);
+  const midpointHandle = setTimeout(() => {
+    displayedBackground.value = next.background;
+    displayedCameraTransform.value = next.cameraTransform;
+    updateDisplayedSprites([]);
+  }, halfDuration);
+  
+  let unregister: (() => void) | null = null;
+  const finalHandle = setTimeout(() => {
+    updateDisplayedSprites(next.sprites ?? []);
+    displayedCameraAnimations.value = next.cameraAnimations;
     isSceneTransitioning.value = false;
-  }, duration);
+    transitionTimeouts.value = [];
+    unregister?.();
+    unregister = null;
+  }, fullDuration);
   
-  // Register with bus
-  const cleanup = bus.register(() => {
-    clearTimeout(handle);
+  transitionTimeouts.value = [midpointHandle, finalHandle];
+  
+  unregister = bus.register(() => {
+    clearTimeout(midpointHandle);
+    clearTimeout(finalHandle);
+    transitionTimeouts.value = [];
     isSceneTransitioning.value = false;
   });
-  
-  // Auto-cleanup when complete
-  setTimeout(() => cleanup(), duration);
 }
 ```
 
@@ -538,6 +551,7 @@ Regenerations/swipes: `activeGenerationType` (tracked via `GENERATION_STARTED` /
 - **`at` clause** is only valid as the final clause in `show` / `camera at`.
 - **Say-with-attrs emits two commands** — `show` then `dialogue`.
 - **`TransitionGroup`** keys sprites by `renderKey = sprite.id`. Re-showing the same character updates the existing DOM node; enter/leave hooks only fire for genuine add/remove.
+- **Camera presentation uses displayed state, not `currentFrame`** — `backgroundStyle`, `spriteStyle`, `cameraAnimationClass`, and `cameraDiagnosticsLabel` read from `displayedCameraTransform` / `displayedCameraAnimations` (owned by `useScenePresentation`). During scene crossfades, `displayedCameraTransform` commits at midpoint and `displayedCameraAnimations` commits at final, preventing camera "teleport" under the fade overlay. `--renpy-camera-transition-ms` is zeroed while `isSceneTransitioning` is true. Do not wire new camera presentation code to `currentFrame.value?.cameraTransform`; use the displayed refs instead.
 - **Speaker display** uses `displayedSpeaker` (managed by `useDialogueReveal`), not a direct computed from the current frame. Three-way transition: appear (fade in via `speakerFadeMs`), disappear (fade out, then clear after `speakerFadeMs`), no change (instant update).
 - **Effective autoplay delay** = `textFadeMs + autoAdvanceDelayMs`. Autoplay will not advance until `isFullyRevealed` is true.
 - **`pendingFrameTarget { kind: 'last' }` uses `Number.MAX_SAFE_INTEGER`** as a sentinel for `frameIndex`; the `watch(frames)` handler clamps it.
