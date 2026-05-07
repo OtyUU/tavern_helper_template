@@ -39,6 +39,7 @@ const BaseSettingsSchema = z
     hudHideDriftPx: z.coerce.number().int().min(0).max(60).default(10),
 
     autoAdvanceDelayMs: z.coerce.number().int().min(0).max(30000).default(2500),
+    /** @deprecated Dead field — not read anywhere. Use autoAdvanceDelayMs instead. */
     autoPlayDelayMs: z.coerce.number().int().min(500).max(20000).default(2500),
     followLatestPlayable: z.boolean().default(true),
     preferredMessageId: z.preprocess(value => {
