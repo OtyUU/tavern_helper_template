@@ -154,6 +154,8 @@ export function useRenpyPlayerController() {
   const {
     displayedBackground,
     displayedSprites,
+    displayedCameraTransform,
+    displayedCameraAnimations,
     previousDisplayedSprites,
     clearTransitionTimeouts,
     applyFrame,
@@ -537,7 +539,7 @@ export function useRenpyPlayerController() {
   const stageStyle = computed(() => ({
     width: `${stageWidth.value}px`,
     height: `${settings.value.stageHeight}px`,
-    '--renpy-camera-transition-ms': effectsDisabled.value
+    '--renpy-camera-transition-ms': (effectsDisabled.value || isSceneTransitioning.value)
       ? '0ms'
       : `${settings.value.cameraTransitionMs}ms`,
     '--stage-height': `${settings.value.stageHeight}px`,
@@ -608,7 +610,7 @@ export function useRenpyPlayerController() {
   }
 
   const backgroundStyle = computed(() => {
-    const camera = resolveActiveCameraPreset(currentFrame.value?.cameraTransform);
+    const camera = resolveActiveCameraPreset(displayedCameraTransform.value);
     return {
       transform: `scale(${camera.backgroundScale})`,
       transformOrigin: 'center center',
@@ -617,7 +619,7 @@ export function useRenpyPlayerController() {
   });
 
   const spriteStyle = computed(() => {
-    const camera = resolveActiveCameraPreset(currentFrame.value?.cameraTransform);
+    const camera = resolveActiveCameraPreset(displayedCameraTransform.value);
     return {
       '--sprite-scale': camera.spriteScale.toString(),
       '--sprite-y': `${camera.spriteY}%`,
@@ -625,13 +627,13 @@ export function useRenpyPlayerController() {
   });
 
   const cameraAnimationClass = computed(
-    () => getCameraAnimationClass(currentFrame.value?.cameraAnimations),
+    () => getCameraAnimationClass(displayedCameraAnimations.value),
   );
 
   const cameraDiagnosticsLabel = computed(() => {
     const parts = [
-      currentFrame.value?.cameraTransform ?? 'default',
-      ...(currentFrame.value?.cameraAnimations ?? []),
+      displayedCameraTransform.value ?? 'default',
+      ...(displayedCameraAnimations.value ?? []),
     ];
     return parts.join(', ');
   });

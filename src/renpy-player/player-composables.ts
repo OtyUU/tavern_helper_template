@@ -342,6 +342,8 @@ export function useScenePresentation(
 ) {
   const displayedBackground = ref<PlayerAsset | undefined>();
   const displayedSprites = ref<PlayerFrame['sprites']>([]);
+  const displayedCameraTransform = ref<PlayerFrame['cameraTransform']>(undefined);
+  const displayedCameraAnimations = ref<PlayerFrame['cameraAnimations']>(undefined);
   const previousDisplayedSprites = ref<PlayerFrame['sprites']>([]);
   const transitionTimeouts = ref<number[]>([]);
   const cameraTransformElement = ref<HTMLElement | null>(null);
@@ -365,12 +367,16 @@ export function useScenePresentation(
 
   function resetDisplayedState() {
     displayedBackground.value = undefined;
+    displayedCameraTransform.value = undefined;
+    displayedCameraAnimations.value = undefined;
     updateDisplayedSprites([]);
     isSceneTransitioning.value = false;
   }
 
   function applyDisplayedFrame(frame: PlayerFrame) {
     displayedBackground.value = frame.background;
+    displayedCameraTransform.value = frame.cameraTransform;
+    displayedCameraAnimations.value = frame.cameraAnimations;
     updateDisplayedSprites(frame.sprites ?? []);
     isSceneTransitioning.value = false;
   }
@@ -402,31 +408,32 @@ export function useScenePresentation(
       const halfDuration = Math.floor(settings.value.sceneTransitionMs / 2);
       const fullDuration = settings.value.sceneTransitionMs;
       isSceneTransitioning.value = true;
+      displayedCameraAnimations.value = undefined;
 
       const midpointHandle = window.setTimeout(() => {
         displayedBackground.value = next.background;
+        displayedCameraTransform.value = next.cameraTransform;
         updateDisplayedSprites([]);
       }, halfDuration);
 
+      let unregister: (() => void) | null = null;
       const finalHandle = window.setTimeout(() => {
         updateDisplayedSprites(next.sprites ?? []);
+        displayedCameraAnimations.value = next.cameraAnimations;
         isSceneTransitioning.value = false;
         transitionTimeouts.value = [];
+        unregister?.();
+        unregister = null;
       }, fullDuration);
 
       transitionTimeouts.value = [midpointHandle, finalHandle];
       
-      // Register cancellation with TransitionBus (Req 1.1, 6.1, 8.2, 8.3)
-      const cleanup = bus.register(() => {
+      unregister = bus.register(() => {
         window.clearTimeout(midpointHandle);
         window.clearTimeout(finalHandle);
+        transitionTimeouts.value = [];
         isSceneTransitioning.value = false;
       });
-      
-      // Auto-cleanup when crossfade completes
-      window.setTimeout(() => {
-        cleanup();
-      }, fullDuration);
       
       return;
     }
@@ -702,6 +709,8 @@ export function useScenePresentation(
   return {
     displayedBackground,
     displayedSprites,
+    displayedCameraTransform,
+    displayedCameraAnimations,
     previousDisplayedSprites,
     clearTransitionTimeouts,
     applyFrame,
