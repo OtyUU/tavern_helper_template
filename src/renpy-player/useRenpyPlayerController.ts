@@ -98,6 +98,32 @@ export function useRenpyPlayerController() {
   const hudShowInProgress = ref(false);
   let hudShowTimeout: number | null = null;
 
+  function clearHudShowTimeout(): void {
+    if (hudShowTimeout !== null) {
+      window.clearTimeout(hudShowTimeout);
+      hudShowTimeout = null;
+    }
+  }
+
+  function cancelHudShow(): void {
+    clearHudShowTimeout();
+    hudShowInProgress.value = false;
+  }
+
+  function beginHudShow(): void {
+    cancelHudShow();
+    if (effectsDisabled.value || settings.value.hudShowDurationMs <= 0) {
+      hudShowInProgress.value = false;
+      return;
+    }
+
+    hudShowInProgress.value = true;
+    hudShowTimeout = window.setTimeout(() => {
+      hudShowTimeout = null;
+      hudShowInProgress.value = false;
+    }, settings.value.hudShowDurationMs);
+  }
+
   /**
    * TransitionBus tracks in-flight visual transitions (scene crossfades, sprite animations, etc.)
    * Created early so it can be passed to useScenePresentation and useSpriteVisibilityTransitions.
@@ -113,23 +139,11 @@ export function useRenpyPlayerController() {
 
   watch(isHudHidden, (hidden, wasHidden) => {
     if (hidden) {
-      if (hudShowTimeout !== null) {
-        window.clearTimeout(hudShowTimeout);
-        hudShowTimeout = null;
-      }
-      hudShowInProgress.value = false;
+      cancelHudShow();
       return;
     }
     if (!wasHidden) return;
-    if (effectsDisabled.value || settings.value.hudShowDurationMs <= 0) {
-      hudShowInProgress.value = false;
-      return;
-    }
-    hudShowInProgress.value = true;
-    hudShowTimeout = window.setTimeout(() => {
-      hudShowTimeout = null;
-      hudShowInProgress.value = false;
-    }, settings.value.hudShowDurationMs);
+    beginHudShow();
   });
 
   // ─── Message switching helpers (dedupe) ───────────────────────────────────
@@ -573,6 +587,59 @@ export function useRenpyPlayerController() {
     return Math.min(max, Math.max(min, value));
   }
 
+  function formatMs(value: number): string {
+    return `${Math.max(0, value)}ms`;
+  }
+
+  /** Returns `0ms` when effects are disabled; otherwise formats as `${value}ms`. */
+  function msOrZero(value: number): string {
+    return effectsDisabled.value ? '0ms' : formatMs(value);
+  }
+
+  /** Returns `0ms` when disabled; otherwise formats as `${value}ms`. */
+  function msOrZeroWhen(enabled: boolean, value: number): string {
+    return enabled ? formatMs(value) : '0ms';
+  }
+
+  type HudScaledPxVarDef = {
+    name: `--${string}`;
+    base: number;
+    min: number;
+    max: number;
+  };
+
+  const HUD_SCALED_PX_VARS: HudScaledPxVarDef[] = [
+    { name: '--renpy-dialogue-min-height', base: 110, min: 80, max: 160 },
+    { name: '--renpy-dialogue-pad-x', base: 40, min: 20, max: 60 },
+    { name: '--renpy-dialogue-pad-top', base: 16, min: 12, max: 24 },
+    { name: '--renpy-dialogue-pad-bottom', base: 16, min: 12, max: 24 },
+    { name: '--renpy-dialogue-gap', base: 24, min: 16, max: 40 },
+
+    { name: '--renpy-speaker-col', base: 140, min: 100, max: 180 },
+    { name: '--renpy-speaker-size', base: 24, min: 18, max: 32 },
+    { name: '--renpy-text-size', base: 18, min: 14, max: 24 },
+
+    { name: '--renpy-rail-width', base: 214, min: 180, max: 272 },
+    { name: '--renpy-control-gap', base: 6, min: 4, max: 10 },
+    { name: '--renpy-control-icon', base: 20, min: 16, max: 26 },
+    { name: '--renpy-control-button-width', base: 42, min: 34, max: 52 },
+    { name: '--renpy-control-button-height', base: 34, min: 28, max: 42 },
+    { name: '--renpy-control-row-pad-x', base: 6, min: 4, max: 10 },
+    { name: '--renpy-control-row-pad-y', base: 8, min: 6, max: 12 },
+    { name: '--renpy-stepper-button-size', base: 20, min: 18, max: 26 },
+    { name: '--renpy-stepper-input-width', base: 34, min: 30, max: 44 },
+    { name: '--renpy-meta-size', base: 10, min: 9, max: 12 },
+    { name: '--renpy-input-size', base: 13, min: 11, max: 17 },
+  ];
+
+  function resolveHudScaledPxVars(scale: number): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const def of HUD_SCALED_PX_VARS) {
+      out[def.name] = `${clampNumber(Math.round(def.base * scale), def.min, def.max)}px`;
+    }
+    return out;
+  }
+
   const stageWidth = computed(() => Math.round(settings.value.stageHeight * 16 / 9));
   const hudScale = computed(() => clampNumber(settings.value.stageHeight / 480, 0.72, 1.42));
 
@@ -580,54 +647,32 @@ export function useRenpyPlayerController() {
     height: `${settings.value.stageHeight}px`,
   }));
 
-  const stageStyle = computed(() => ({
-    width: `${stageWidth.value}px`,
-    height: `${settings.value.stageHeight}px`,
-    '--renpy-camera-transition-ms': (effectsDisabled.value || isSceneTransitioning.value)
-      ? '0ms'
-      : `${settings.value.cameraTransitionMs}ms`,
-    '--stage-height': `${settings.value.stageHeight}px`,
-    '--renpy-ui-scale': hudScale.value.toFixed(3),
+  const stageStyle = computed(() => {
+    const scale = hudScale.value;
+    return {
+      width: `${stageWidth.value}px`,
+      height: `${settings.value.stageHeight}px`,
+      '--renpy-camera-transition-ms': msOrZeroWhen(
+        !(effectsDisabled.value || isSceneTransitioning.value),
+        settings.value.cameraTransitionMs,
+      ),
+      '--stage-height': `${settings.value.stageHeight}px`,
+      '--renpy-ui-scale': scale.toFixed(3),
 
-    '--renpy-shell-pad-x': `0px`,
-    '--renpy-shell-pad-bottom': `0px`,
-    '--renpy-shell-gap': `0px`,
+      '--renpy-shell-pad-x': `0px`,
+      '--renpy-shell-pad-bottom': `0px`,
+      '--renpy-shell-gap': `0px`,
 
-    '--renpy-dialogue-min-height': `${clampNumber(Math.round(110 * hudScale.value), 80, 160)}px`,
-    '--renpy-dialogue-pad-x': `${clampNumber(Math.round(40 * hudScale.value), 20, 60)}px`,
-    '--renpy-dialogue-pad-top': `${clampNumber(Math.round(16 * hudScale.value), 12, 24)}px`,
-    '--renpy-dialogue-pad-bottom': `${clampNumber(Math.round(16 * hudScale.value), 12, 24)}px`,
-    '--renpy-dialogue-gap': `${clampNumber(Math.round(24 * hudScale.value), 16, 40)}px`,
+      ...resolveHudScaledPxVars(scale),
 
-    '--renpy-speaker-col': `${clampNumber(Math.round(140 * hudScale.value), 100, 180)}px`,
-    '--renpy-speaker-size': `${clampNumber(Math.round(24 * hudScale.value), 18, 32)}px`,
-    '--renpy-text-size': `${clampNumber(Math.round(18 * hudScale.value), 14, 24)}px`,
-
-    '--renpy-rail-width': `${clampNumber(Math.round(214 * hudScale.value), 180, 272)}px`,
-    '--renpy-control-gap': `${clampNumber(Math.round(6 * hudScale.value), 4, 10)}px`,
-    '--renpy-control-icon': `${clampNumber(Math.round(20 * hudScale.value), 16, 26)}px`,
-    '--renpy-control-button-width': `${clampNumber(Math.round(42 * hudScale.value), 34, 52)}px`,
-    '--renpy-control-button-height': `${clampNumber(Math.round(34 * hudScale.value), 28, 42)}px`,
-    '--renpy-control-row-pad-x': `${clampNumber(Math.round(6 * hudScale.value), 4, 10)}px`,
-    '--renpy-control-row-pad-y': `${clampNumber(Math.round(8 * hudScale.value), 6, 12)}px`,
-    '--renpy-stepper-button-size': `${clampNumber(Math.round(20 * hudScale.value), 18, 26)}px`,
-    '--renpy-stepper-input-width': `${clampNumber(Math.round(34 * hudScale.value), 30, 44)}px`,
-    '--renpy-meta-size': `${clampNumber(Math.round(10 * hudScale.value), 9, 12)}px`,
-    '--renpy-input-size': `${clampNumber(Math.round(13 * hudScale.value), 11, 17)}px`,
-
-    '--renpy-text-fade-ms': effectsDisabled.value
-      ? '0ms'
-      : `${settings.value.textFadeMs}ms`,
-    '--renpy-speaker-fade-ms': effectsDisabled.value
-      ? '0ms'
-      : `${settings.value.speakerFadeMs}ms`,
-    '--renpy-hud-hide-ms': effectsDisabled.value ? '0ms' : `${settings.value.hudHideDurationMs}ms`,
-    '--renpy-hud-show-ms': effectsDisabled.value ? '0ms' : `${settings.value.hudShowDurationMs}ms`,
-    '--renpy-hud-hide-drift-ms': effectsDisabled.value
-      ? '0ms'
-      : `${Math.round(settings.value.hudHideDurationMs * 1.25)}ms`,
-    '--renpy-hud-drift-px': `${settings.value.hudHideDriftPx}px`,
-  }));
+      '--renpy-text-fade-ms': msOrZero(settings.value.textFadeMs),
+      '--renpy-speaker-fade-ms': msOrZero(settings.value.speakerFadeMs),
+      '--renpy-hud-hide-ms': msOrZero(settings.value.hudHideDurationMs),
+      '--renpy-hud-show-ms': msOrZero(settings.value.hudShowDurationMs),
+      '--renpy-hud-hide-drift-ms': msOrZero(Math.round(settings.value.hudHideDurationMs * 1.25)),
+      '--renpy-hud-drift-px': `${settings.value.hudHideDriftPx}px`,
+    };
+  });
 
   function resolveActiveCameraPreset(transform?: 'closeup' | 'medium') {
     if (transform === 'closeup') {
@@ -832,11 +877,7 @@ export function useRenpyPlayerController() {
       if (nextFrame !== previousFrame) {
         resetToScene('currentFrame changed');
         clearReveal();
-        if (hudShowTimeout !== null) {
-          window.clearTimeout(hudShowTimeout);
-          hudShowTimeout = null;
-        }
-        hudShowInProgress.value = false;
+        cancelHudShow();
       }
 
       applyFrame(nextFrame, effectivePrev);
@@ -1281,11 +1322,7 @@ export function useRenpyPlayerController() {
     clearTransitionTimeouts();
     clearSpriteVisibilityTransitions();
 
-    if (hudShowTimeout !== null) {
-      window.clearTimeout(hudShowTimeout);
-      hudShowTimeout = null;
-    }
-    hudShowInProgress.value = false;
+    cancelHudShow();
 
     bus.dispose();
 

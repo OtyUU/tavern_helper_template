@@ -344,6 +344,7 @@ export function useScenePresentation(
   const previousDisplayedSprites = ref<PlayerFrame['sprites']>([]);
   const transitionTimeouts = ref<number[]>([]);
   const backgroundElement = ref<HTMLElement | null>(null);
+  const activeCssTransitionTrackers = new WeakMap<HTMLElement, Map<string, () => void>>();
 
   watch(displayedSprites, (_nextSprites, previousSprites) => {
     previousDisplayedSprites.value = previousSprites ?? [];
@@ -457,63 +458,85 @@ export function useScenePresentation(
     
     // Only background has the actual CSS transition; scene layer is just a container.
     if (backgroundElement.value) {
-      trackElementTransition(backgroundElement.value, 'camera transform (background)');
+      trackCssTransition(
+        backgroundElement.value,
+        'transform',
+        cameraTransitionMs.value,
+        'camera transform (background)',
+      );
     }
   }
   
-  /** Track a single element's CSS transition and register with TransitionBus. */
-  function trackElementTransition(element: HTMLElement, label: string): void {
+  function trackCssTransition(
+    element: HTMLElement,
+    propertyName: string,
+    durationMs: number,
+    _label?: string,
+  ): void {
+    if (durationMs <= 0) {
+      return;
+    }
+
+    let perProp = activeCssTransitionTrackers.get(element);
+    if (!perProp) {
+      perProp = new Map<string, () => void>();
+      activeCssTransitionTrackers.set(element, perProp);
+    }
+
+    perProp.get(propertyName)?.();
+
     let finished = false;
-    let cleanup: (() => void) | null = null;
+    let unregister: (() => void) | null = null;
     let fallbackHandle: number | null = null;
-    
+
     const complete = () => {
       if (finished) return;
       finished = true;
-      
+
       if (fallbackHandle !== null) {
         window.clearTimeout(fallbackHandle);
         fallbackHandle = null;
       }
-      
-      if (cleanup) {
-        cleanup();
-        cleanup = null;
+
+      if (unregister) {
+        unregister();
+        unregister = null;
       }
-      
+
       element.removeEventListener('transitionend', onTransitionEnd);
       element.removeEventListener('transitioncancel', onTransitionCancel);
+
+      const current = perProp?.get(propertyName);
+      if (current === complete) {
+        perProp?.delete(propertyName);
+        if (perProp && perProp.size === 0) {
+          activeCssTransitionTrackers.delete(element);
+        }
+      }
     };
-    
+
     const onTransitionEnd = (event: TransitionEvent) => {
-      // Only handle transitions on this element (not bubbled from children)
       if (event.target !== element) return;
-      
-      // Only handle transform transitions
-      if (event.propertyName !== 'transform') return;
-      
+      if (event.propertyName !== propertyName) return;
       complete();
     };
-    
+
     const onTransitionCancel = (event: TransitionEvent) => {
-      // Only handle transitions on this element (not bubbled from children)
       if (event.target !== element) return;
-      
-      // Only handle transform transitions
-      if (event.propertyName !== 'transform') return;
-      
+      if (event.propertyName !== propertyName) return;
       complete();
     };
-    
-    // Register cancellation with TransitionBus
-    cleanup = bus.register(() => {
+
+    perProp.set(propertyName, complete);
+
+    unregister = bus.register(() => {
       complete();
     });
-    
+
     element.addEventListener('transitionend', onTransitionEnd, { once: false });
     element.addEventListener('transitioncancel', onTransitionCancel, { once: false });
-    
-    const fallbackMs = cameraTransitionMs.value + 50;
+
+    const fallbackMs = durationMs + 50;
     fallbackHandle = window.setTimeout(() => {
       complete();
     }, fallbackMs);
@@ -556,66 +579,8 @@ export function useScenePresentation(
         return;
       }
       
-      trackSpriteShellTransition(shell, sprite.id);
+      trackCssTransition(shell, 'left', cameraTransitionMs.value, `sprite left (${sprite.id})`);
     });
-  }
-  
-  /** Track a single sprite shell's CSS transition and register with TransitionBus. */
-  function trackSpriteShellTransition(shell: HTMLElement, spriteId: string): void {
-    let finished = false;
-    let cleanup: (() => void) | null = null;
-    let fallbackHandle: number | null = null;
-    
-    const complete = () => {
-      if (finished) return;
-      finished = true;
-      
-      if (fallbackHandle !== null) {
-        window.clearTimeout(fallbackHandle);
-        fallbackHandle = null;
-      }
-      
-      if (cleanup) {
-        cleanup();
-        cleanup = null;
-      }
-      
-      shell.removeEventListener('transitionend', onTransitionEnd);
-      shell.removeEventListener('transitioncancel', onTransitionCancel);
-    };
-    
-    const onTransitionEnd = (event: TransitionEvent) => {
-      // Only handle transitions on this element (not bubbled from children)
-      if (event.target !== shell) return;
-      
-      // Only handle left position transitions
-      if (event.propertyName !== 'left') return;
-      
-      complete();
-    };
-    
-    const onTransitionCancel = (event: TransitionEvent) => {
-      // Only handle transitions on this element (not bubbled from children)
-      if (event.target !== shell) return;
-      
-      // Only handle left position transitions
-      if (event.propertyName !== 'left') return;
-      
-      complete();
-    };
-    
-    // Register cancellation with TransitionBus
-    cleanup = bus.register(() => {
-      complete();
-    });
-    
-    shell.addEventListener('transitionend', onTransitionEnd, { once: false });
-    shell.addEventListener('transitioncancel', onTransitionCancel, { once: false });
-    
-    const fallbackMs = cameraTransitionMs.value + 50;
-    fallbackHandle = window.setTimeout(() => {
-      complete();
-    }, fallbackMs);
   }
 
   return {
