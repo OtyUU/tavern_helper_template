@@ -10,7 +10,7 @@ import {
     useSpriteVisibilityTransitions,
 } from './player-composables';
 import { useRenpyPlayerSettingsStore } from './settings';
-import type { PlayerFrame, SpritePosition } from './types';
+import type { PlayerCameraIntent, PlayerFrame, SpritePosition } from './types';
 import { useFramePhase } from './useFramePhase';
 import { useTransitionBus } from './useTransitionBus';
 
@@ -236,7 +236,7 @@ export function useRenpyPlayerController() {
   const {
     displayedBackground,
     displayedSprites,
-    displayedCameraTransform,
+    displayedCamera,
     displayedCameraAnimations,
     previousDisplayedSprites,
     clearTransitionTimeouts,
@@ -671,10 +671,15 @@ export function useRenpyPlayerController() {
       '--renpy-hud-show-ms': msOrZero(settings.value.hudShowDurationMs),
       '--renpy-hud-hide-drift-ms': msOrZero(Math.round(settings.value.hudHideDurationMs * 1.25)),
       '--renpy-hud-drift-px': `${settings.value.hudHideDriftPx}px`,
+
+      '--renpy-camera-pan-y': `${cameraPanYPx.value}px`,
+      '--renpy-sprite-offset-y': `${settings.value.spriteBaselineOffsetPx}px`,
+      '--sprite-y': 'calc(var(--renpy-camera-pan-y, 0px) + var(--renpy-sprite-offset-y, 0px))',
     };
   });
 
-  function resolveActiveCameraPreset(transform?: 'closeup' | 'medium') {
+  function resolveActiveCameraPreset(intent?: PlayerCameraIntent) {
+    const transform = intent?.preset;
     if (transform === 'closeup') {
       return {
         backgroundScale: settings.value.closeupBackgroundScale,
@@ -699,13 +704,22 @@ export function useRenpyPlayerController() {
   }
 
   const activeCameraPreset = computed(() =>
-    resolveActiveCameraPreset(displayedCameraTransform.value),
+    resolveActiveCameraPreset(displayedCamera.value),
+  );
+
+  const cameraPanYPx = computed(() => {
+    const pct = activeCameraPreset.value.spriteY ?? 0;
+    return Math.round(settings.value.stageHeight * (pct / 100));
+  });
+
+  const backgroundPanYPx = computed(() =>
+    Math.round(cameraPanYPx.value * (settings.value.bgPanParallax ?? 1)),
   );
 
   const backgroundStyle = computed(() => {
     const camera = activeCameraPreset.value;
     return {
-      transform: `scale(${camera.backgroundScale})`,
+      transform: `translate3d(0, ${backgroundPanYPx.value}px, 0) scale(${camera.backgroundScale})`,
       transformOrigin: 'center center',
       transition: 'transform var(--renpy-camera-transition-ms) ease',
     };
@@ -715,7 +729,6 @@ export function useRenpyPlayerController() {
     const camera = activeCameraPreset.value;
     return {
       '--sprite-scale': camera.spriteScale.toString(),
-      '--sprite-y': `${camera.spriteY}%`,
     };
   });
 
@@ -725,7 +738,8 @@ export function useRenpyPlayerController() {
 
   const cameraDiagnosticsLabel = computed(() => {
     const parts = [
-      displayedCameraTransform.value ?? 'default',
+      displayedCamera.value?.preset ?? 'default',
+      `panY:${cameraPanYPx.value}px`,
       ...(displayedCameraAnimations.value ?? []),
     ];
     return parts.join(', ');

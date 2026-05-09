@@ -178,6 +178,12 @@
           <p>Adjust framing for the default view plus the Ren'Py-style <code>medium</code> and <code>closeup</code> transforms.</p>
         </div>
 
+        <div class="renpy-player-settings__field">
+          <label>Background parallax (0..1)</label>
+          <input v-model.number="settings.bgPanParallax" class="text_pole" type="number" min="0" max="1" step="0.05" />
+          <small>How much the background follows camera pan. Lower = stronger parallax.</small>
+        </div>
+
         <div class="renpy-player-settings__camera-grid">
           <div class="renpy-player-settings__camera-card">
             <h5>Default</h5>
@@ -190,7 +196,7 @@
               <input v-model.number="settings.defaultSpriteScale" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
             </div>
             <div class="renpy-player-settings__field">
-              <label>Sprite Y (%)</label>
+              <label>Camera pan Y (%)</label>
               <input v-model.number="settings.defaultSpriteY" class="text_pole" type="number" min="-100" max="100" step="1" />
             </div>
             <div class="renpy-player-settings__field">
@@ -228,7 +234,7 @@
               <input v-model.number="settings.mediumSpriteScale" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
             </div>
             <div class="renpy-player-settings__field">
-              <label>Sprite Y (%)</label>
+              <label>Camera pan Y (%)</label>
               <input v-model.number="settings.mediumSpriteY" class="text_pole" type="number" min="-100" max="100" step="1" />
             </div>
           </div>
@@ -244,7 +250,7 @@
               <input v-model.number="settings.closeupSpriteScale" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
             </div>
             <div class="renpy-player-settings__field">
-              <label>Sprite Y (%)</label>
+              <label>Camera pan Y (%)</label>
               <input v-model.number="settings.closeupSpriteY" class="text_pole" type="number" min="-100" max="100" step="1" />
             </div>
           </div>
@@ -276,6 +282,19 @@
             This is the baseline canvas height for a character pack.
             Taller source canvases render proportionally taller from the bottom anchor.
           </small>
+        </div>
+
+        <div class="renpy-player-settings__field">
+          <label>Sprite baseline offset (px)</label>
+          <input
+            v-model.number="settings.spriteBaselineOffsetPx"
+            class="text_pole"
+            type="number"
+            min="-2000"
+            max="2000"
+            step="10"
+          />
+          <small>Moves all sprites up/down to account for transparent canvas padding. Positive = down.</small>
         </div>
 
         <div class="renpy-player-settings__field">

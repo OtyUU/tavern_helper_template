@@ -8,6 +8,18 @@ export type SpritePosition = 'farleft' | 'left' | 'midleft' | 'center' | 'midrig
 export type CameraTransform = 'closeup' | 'medium';
 export type CameraAnimation = 'shake';
 
+export type CameraPreset = 'default' | 'medium' | 'closeup';
+
+/** Intent-level camera state (no px; safe to persist through history replay). */
+export type PlayerCameraIntent = {
+  /** Always explicit; never undefined. */
+  preset: CameraPreset;
+  /** Reserved for future horizontal pans. Stage-relative (% of stage width). */
+  panXPct?: number;
+  /** Reserved for future vertical pans. Stage-relative (% of stage height). */
+  panYPct?: number;
+};
+
 export type ShowCommand = {
   type: 'show';
   raw: string;
@@ -73,6 +85,8 @@ export type InitialPlayerState = {
   backgroundName?: string;
   /** Active background segment (for inheritance) */
   backgroundSegment?: string;
+  /** Persistent camera intent (new). */
+  camera?: PlayerCameraIntent;
   /** Persistent global camera zoom */
   cameraTransform?: CameraTransform;
   /** Remembered outfit per character, used when `show` omits `in <outfit>` (may include non-visible characters) */
@@ -97,6 +111,8 @@ export type PlayerFrame = {
   /** True when this frame is emitted immediately after processing at least one `scene` command */
   isNewScene?: boolean;
   background?: PlayerAsset;
+  /** Camera intent (new). */
+  camera?: PlayerCameraIntent;
   cameraTransform?: CameraTransform;
   /** One-shot camera animations for this frame (not persistent) */
   cameraAnimations?: CameraAnimation[];

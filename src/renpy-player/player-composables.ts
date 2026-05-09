@@ -1,6 +1,7 @@
 import type { Ref } from 'vue';
 import { ref, watch } from 'vue';
 import type { PlayerAsset, PlayerFrame } from './types';
+import { normalizeCameraFromFrame } from './camera-utils';
 
 type SpriteVisibilityEffect = 'fade' | 'none';
 
@@ -339,7 +340,7 @@ export function useScenePresentation(
 ) {
   const displayedBackground = ref<PlayerAsset | undefined>();
   const displayedSprites = ref<PlayerFrame['sprites']>([]);
-  const displayedCameraTransform = ref<PlayerFrame['cameraTransform']>(undefined);
+  const displayedCamera = ref<PlayerFrame['camera']>(undefined);
   const displayedCameraAnimations = ref<PlayerFrame['cameraAnimations']>(undefined);
   const previousDisplayedSprites = ref<PlayerFrame['sprites']>([]);
   const transitionTimeouts = ref<number[]>([]);
@@ -364,7 +365,7 @@ export function useScenePresentation(
 
   function resetDisplayedState() {
     displayedBackground.value = undefined;
-    displayedCameraTransform.value = undefined;
+    displayedCamera.value = { preset: 'default' };
     displayedCameraAnimations.value = undefined;
     updateDisplayedSprites([]);
     isSceneTransitioning.value = false;
@@ -372,7 +373,7 @@ export function useScenePresentation(
 
   function applyDisplayedFrame(frame: PlayerFrame) {
     displayedBackground.value = frame.background;
-    displayedCameraTransform.value = frame.cameraTransform;
+    displayedCamera.value = normalizeCameraFromFrame(frame);
     displayedCameraAnimations.value = frame.cameraAnimations;
     updateDisplayedSprites(frame.sprites ?? []);
     isSceneTransitioning.value = false;
@@ -409,7 +410,7 @@ export function useScenePresentation(
 
       const midpointHandle = window.setTimeout(() => {
         displayedBackground.value = next.background;
-        displayedCameraTransform.value = next.cameraTransform;
+        displayedCamera.value = normalizeCameraFromFrame(next);
         updateDisplayedSprites([]);
       }, halfDuration);
 
@@ -448,7 +449,9 @@ export function useScenePresentation(
       return;
     }
     
-    if (next.cameraTransform === prev.cameraTransform) {
+    const nextPreset = normalizeCameraFromFrame(next).preset;
+    const prevPreset = normalizeCameraFromFrame(prev).preset;
+    if (nextPreset === prevPreset) {
       return;
     }
     
@@ -586,7 +589,7 @@ export function useScenePresentation(
   return {
     displayedBackground,
     displayedSprites,
-    displayedCameraTransform,
+    displayedCamera,
     displayedCameraAnimations,
     previousDisplayedSprites,
     clearTransitionTimeouts,

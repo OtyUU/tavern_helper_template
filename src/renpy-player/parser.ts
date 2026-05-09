@@ -1,11 +1,13 @@
 import type {
   CameraAnimation,
   CameraTransform,
+  CameraPreset,
   CharacterSpriteConfig,
   FrameBuildOptions,
   InitialPlayerState,
   ParsedScript,
   PlayerAsset,
+  PlayerCameraIntent,
   PlayerFrame,
   SceneCommand,
   ScriptCommand,
@@ -588,7 +590,7 @@ class StageState {
   private background: PlayerAsset | undefined;
   private backgroundName: string;
   private backgroundSegment: string | undefined;
-  private cameraTransform: CameraTransform | undefined;
+  private camera: PlayerCameraIntent;
   private pendingCameraAnimations: CameraAnimation[];
   private sprites: Record<string, SpriteState>;
   private spriteOrder: string[];
@@ -599,7 +601,11 @@ class StageState {
       this.background = initial.background;
       this.backgroundName = initial.backgroundName ?? '';
       this.backgroundSegment = initial.backgroundSegment;
-      this.cameraTransform = initial.cameraTransform;
+      const presetFromLegacy: CameraPreset =
+        initial.cameraTransform ? (initial.cameraTransform as CameraPreset) : 'default';
+      this.camera = initial.camera
+        ? { ...initial.camera }
+        : { preset: presetFromLegacy };
       this.sprites = { ...initial.sprites };
       this.rememberedOutfits = { ...(initial.rememberedOutfits ?? {}) };
       for (const sprite of Object.values(initial.sprites)) {
@@ -612,7 +618,7 @@ class StageState {
       this.background = undefined;
       this.backgroundName = '';
       this.backgroundSegment = undefined;
-      this.cameraTransform = undefined;
+      this.camera = { preset: 'default' };
       this.sprites = {};
       this.rememberedOutfits = {};
       this.spriteOrder = [];
@@ -649,12 +655,12 @@ class StageState {
 
       case 'camera': {
         if (cmd.clear) {
-          this.cameraTransform = undefined;
+          this.camera = { preset: 'default' };
           this.pendingCameraAnimations = [];
         } else if (cmd.transforms?.length) {
           const { cameraTransform: nextCameraTransform, cameraAnimations } = categorizeCameraTransforms(cmd.transforms);
           if (nextCameraTransform) {
-            this.cameraTransform = nextCameraTransform;
+            this.camera.preset = nextCameraTransform;
           }
           this.pendingCameraAnimations = cameraAnimations;
         }
@@ -691,13 +697,17 @@ class StageState {
 
   flush(): {
     background: PlayerAsset | undefined;
+    camera: PlayerCameraIntent;
     cameraTransform: CameraTransform | undefined;
     cameraAnimations: CameraAnimation[] | undefined;
     sprites: PlayerFrame['sprites'];
   } {
     const result = {
       background: this.background,
-      cameraTransform: this.cameraTransform,
+      camera: { ...this.camera },
+      cameraTransform: this.camera.preset === 'default'
+        ? undefined
+        : (this.camera.preset as CameraTransform),
       cameraAnimations: this.pendingCameraAnimations.length > 0
         ? [...this.pendingCameraAnimations]
         : undefined,
@@ -721,7 +731,13 @@ class StageState {
   }
 
   getCameraTransform(): CameraTransform | undefined {
-    return this.cameraTransform;
+    return this.camera.preset === 'default'
+      ? undefined
+      : (this.camera.preset as CameraTransform);
+  }
+
+  getCamera(): PlayerCameraIntent {
+    return { ...this.camera };
   }
 
   getBackgroundName(): string {
@@ -818,6 +834,7 @@ export function getInitialState(
     background: stage.getBackground(),
     backgroundName: stage.getBackgroundName(),
     backgroundSegment: stage.getBackgroundSegment(),
+    camera: stage.getCamera(),
     cameraTransform: stage.getCameraTransform(),
     rememberedOutfits: stage.getRememberedOutfits(),
     sprites: stage.getSpritesMap(),
