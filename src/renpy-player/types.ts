@@ -4,7 +4,7 @@ export type HideCommand = {
   character: string;
 };
 
-export type SpritePosition = 'left' | 'center' | 'right';
+export type SpritePosition = 'farleft' | 'left' | 'midleft' | 'center' | 'midright' | 'right' | 'farright';
 export type CameraTransform = 'closeup' | 'medium';
 export type CameraAnimation = 'shake';
 

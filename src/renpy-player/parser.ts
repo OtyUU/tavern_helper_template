@@ -147,7 +147,7 @@ function getSpeakerLabel(speaker: string): string {
 const CAMERA_TRANSFORMS = new Set(['closeup', 'medium']);
 const CAMERA_ANIMATIONS = new Set(['shake']);
 const SPRITE_TRANSFORMS = new Set(['shake', 'bounce', 'pulse']);
-const SPRITE_POSITIONS = new Set(['left', 'center', 'right']);
+const SPRITE_POSITIONS = new Set<SpritePosition>(['farleft', 'left', 'midleft', 'center', 'midright', 'right', 'farright']);
 const SHOW_TRANSFORMS = new Set([...SPRITE_POSITIONS, ...SPRITE_TRANSFORMS]);
 const CAMERA_COMMAND_TRANSFORMS = new Set([...CAMERA_TRANSFORMS, ...CAMERA_ANIMATIONS]);
 

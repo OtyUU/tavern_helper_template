@@ -202,8 +202,18 @@
               <label>Left/right spacing (%)</label>
               <input v-model.number="settings.spriteSideSpacing" class="text_pole" type="number" min="0" max="50" step="1" />
               <small>
-                Controls how far <code>left</code> and <code>right</code> sit from the center anchor.
+                Offset for <code>left</code> and <code>right</code> slots from the center anchor.
               </small>
+            </div>
+            <div class="renpy-player-settings__field">
+              <label>Mid spacing (%)</label>
+              <input v-model.number="settings.spriteMidSpacing" class="text_pole" type="number" min="0" max="60" step="1" />
+              <small>Offset for <code>midleft</code> and <code>midright</code> slots.</small>
+            </div>
+            <div class="renpy-player-settings__field">
+              <label>Far spacing (%)</label>
+              <input v-model.number="settings.spriteFarSpacing" class="text_pole" type="number" min="0" max="60" step="1" />
+              <small>Offset for <code>farleft</code> and <code>farright</code> slots.</small>
             </div>
           </div>
 

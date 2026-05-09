@@ -10,7 +10,7 @@ import {
     useSpriteVisibilityTransitions,
 } from './player-composables';
 import { useRenpyPlayerSettingsStore } from './settings';
-import type { PlayerFrame } from './types';
+import type { PlayerFrame, SpritePosition } from './types';
 import { useFramePhase } from './useFramePhase';
 import { useTransitionBus } from './useTransitionBus';
 
@@ -811,28 +811,25 @@ export function useRenpyPlayerController() {
     };
   }
 
-  function getSpriteAnchorX(
-    position: 'left' | 'center' | 'right',
-    zoom: number,
-  ): number {
-    const center = settings.value.spriteCenterX;
-    const spacing = settings.value.spriteSideSpacing;
-
-    const offset =
-      position === 'left' ? -spacing
-      : position === 'right' ? spacing
-      : 0;
-
-    return clampNumber(center + offset * zoom, 0, 100);
+  function getSpriteAnchorX(position: SpritePosition, zoom: number): number {
+    const C = settings.value.spriteCenterX;
+    const M = settings.value.spriteMidSpacing;
+    const S = settings.value.spriteSideSpacing;
+    const F = settings.value.spriteFarSpacing;
+    const offsets: Record<SpritePosition, number> = {
+      farleft:  -F,
+      left:     -S,
+      midleft:  -M,
+      center:    0,
+      midright:  M,
+      right:     S,
+      farright:  F,
+    };
+    return clampNumber(C + offsets[position] * zoom, 0, 100);
   }
 
-  function getSpriteShellStyle(
-    position: 'left' | 'center' | 'right',
-    zoom: number,
-  ) {
-    return {
-      left: `${getSpriteAnchorX(position, zoom)}%`,
-    };
+  function getSpriteShellStyle(position: SpritePosition, zoom: number) {
+    return { left: `${getSpriteAnchorX(position, zoom)}%` };
   }
 
   function getSpriteSwapDuration(sprite: PlayerFrame['sprites'][number]): number {
