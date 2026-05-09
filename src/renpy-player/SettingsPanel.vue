@@ -188,12 +188,8 @@
           <div class="renpy-player-settings__camera-card">
             <h5>Default</h5>
             <div class="renpy-player-settings__field">
-              <label>Background scale</label>
+              <label>Camera scale</label>
               <input v-model.number="settings.defaultBackgroundScale" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
-            </div>
-            <div class="renpy-player-settings__field">
-              <label>Sprite scale</label>
-              <input v-model.number="settings.defaultSpriteScale" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
             </div>
             <div class="renpy-player-settings__field">
               <label>Camera pan Y (%)</label>
@@ -226,12 +222,8 @@
           <div class="renpy-player-settings__camera-card">
             <h5>Medium</h5>
             <div class="renpy-player-settings__field">
-              <label>Background scale</label>
+              <label>Camera scale</label>
               <input v-model.number="settings.mediumBackgroundScale" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
-            </div>
-            <div class="renpy-player-settings__field">
-              <label>Sprite scale</label>
-              <input v-model.number="settings.mediumSpriteScale" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
             </div>
             <div class="renpy-player-settings__field">
               <label>Camera pan Y (%)</label>
@@ -242,12 +234,8 @@
           <div class="renpy-player-settings__camera-card">
             <h5>Closeup</h5>
             <div class="renpy-player-settings__field">
-              <label>Background scale</label>
+              <label>Camera scale</label>
               <input v-model.number="settings.closeupBackgroundScale" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
-            </div>
-            <div class="renpy-player-settings__field">
-              <label>Sprite scale</label>
-              <input v-model.number="settings.closeupSpriteScale" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
             </div>
             <div class="renpy-player-settings__field">
               <label>Camera pan Y (%)</label>

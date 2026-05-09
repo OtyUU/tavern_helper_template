@@ -3,11 +3,11 @@ import { storeToRefs } from 'pinia';
 import { computed, onMounted, onScopeDispose, reactive, readonly, ref, watch } from 'vue';
 import { buildFrames, getInitialState, parseScriptFromMessage } from './parser';
 import {
-    useAutoplay,
-    useDialogueReveal,
-    useReducedMotion,
-    useScenePresentation,
-    useSpriteVisibilityTransitions,
+  useAutoplay,
+  useDialogueReveal,
+  useReducedMotion,
+  useScenePresentation,
+  useSpriteVisibilityTransitions,
 } from './player-composables';
 import { useRenpyPlayerSettingsStore } from './settings';
 import type { PlayerCameraIntent, PlayerFrame, SpritePosition } from './types';
@@ -241,7 +241,8 @@ export function useRenpyPlayerController() {
     previousDisplayedSprites,
     clearTransitionTimeouts,
     applyFrame,
-    setBackgroundElement,
+    setBackgroundCameraElement,
+    setSpriteCameraElement,
     trackSpritePositionTransitions,
   } = useScenePresentation(
     settings,
@@ -672,9 +673,8 @@ export function useRenpyPlayerController() {
       '--renpy-hud-hide-drift-ms': msOrZero(Math.round(settings.value.hudHideDurationMs * 1.25)),
       '--renpy-hud-drift-px': `${settings.value.hudHideDriftPx}px`,
 
-      '--renpy-camera-pan-y': `${cameraPanYPx.value}px`,
       '--renpy-sprite-offset-y': `${settings.value.spriteBaselineOffsetPx}px`,
-      '--sprite-y': 'calc(var(--renpy-camera-pan-y, 0px) + var(--renpy-sprite-offset-y, 0px))',
+      '--sprite-y': 'var(--renpy-sprite-offset-y, 0px)',
     };
   });
 
@@ -707,28 +707,39 @@ export function useRenpyPlayerController() {
     resolveActiveCameraPreset(displayedCamera.value),
   );
 
-  const cameraPanYPx = computed(() => {
-    const pct = activeCameraPreset.value.spriteY ?? 0;
-    return Math.round(settings.value.stageHeight * (pct / 100));
+  const cameraPanXPx = computed(() => {
+    const pct = displayedCamera.value?.panXPct ?? 0;
+    return Math.round(stageWidth.value * (pct / 100));
   });
 
-  const backgroundPanYPx = computed(() =>
-    Math.round(cameraPanYPx.value * (settings.value.bgPanParallax ?? 1)),
-  );
+  const cameraPanYPx = computed(() => {
+    const presetPct = activeCameraPreset.value.spriteY ?? 0;
+    const intentPct = displayedCamera.value?.panYPct ?? 0;
+    return Math.round(settings.value.stageHeight * ((presetPct + intentPct) / 100));
+  });
 
-  const backgroundStyle = computed(() => {
-    const camera = activeCameraPreset.value;
+  const zoom = computed(() => activeCameraPreset.value.backgroundScale);
+
+  const backgroundCameraStyle = computed(() => {
+    const mult = settings.value.bgPanParallax ?? 1;
     return {
-      transform: `translate3d(0, ${backgroundPanYPx.value}px, 0) scale(${camera.backgroundScale})`,
+      transform: `translate3d(${cameraPanXPx.value * mult}px, ${cameraPanYPx.value * mult}px, 0) scale(${zoom.value})`,
+      transformOrigin: 'center center',
+      transition: 'transform var(--renpy-camera-transition-ms) ease',
+    };
+  });
+
+  const spriteCameraStyle = computed(() => {
+    return {
+      transform: `translate3d(${cameraPanXPx.value}px, ${cameraPanYPx.value}px, 0) scale(${zoom.value})`,
       transformOrigin: 'center center',
       transition: 'transform var(--renpy-camera-transition-ms) ease',
     };
   });
 
   const spriteStyle = computed(() => {
-    const camera = activeCameraPreset.value;
     return {
-      '--sprite-scale': camera.spriteScale.toString(),
+      '--sprite-scale': '1',
     };
   });
 
@@ -775,7 +786,6 @@ export function useRenpyPlayerController() {
   );
 
   const renderedSprites = computed(() => {
-    const zoom = activeCameraPreset.value.spriteScale;
     return (displayedSprites.value ?? []).map(sprite => {
       const referenceHeight = getSpriteReferenceHeight(sprite.id);
       const normalizationScale = getSpriteNormalizationScale(sprite);
@@ -785,7 +795,7 @@ export function useRenpyPlayerController() {
         renderKey: sprite.id,
         animationClass: getSpriteAnimationClass(sprite.animations),
         shellStyle: {
-          ...getSpriteShellStyle(sprite.position, zoom),
+          ...getSpriteShellStyle(sprite.position),
           '--sprite-ref-height': `${referenceHeight}px`,
           '--sprite-normalize-scale': `${normalizationScale}`,
         },
@@ -825,7 +835,7 @@ export function useRenpyPlayerController() {
     };
   }
 
-  function getSpriteAnchorX(position: SpritePosition, zoom: number): number {
+  function getSpriteAnchorXPct(position: SpritePosition): number {
     const C = settings.value.spriteCenterX;
     const M = settings.value.spriteMidSpacing;
     const S = settings.value.spriteSideSpacing;
@@ -839,11 +849,17 @@ export function useRenpyPlayerController() {
       right:     S,
       farright:  F,
     };
-    return clampNumber(C + offsets[position] * zoom, 0, 100);
+    return clampNumber(C + offsets[position], 0, 100);
   }
 
-  function getSpriteShellStyle(position: SpritePosition, zoom: number) {
-    return { left: `${getSpriteAnchorX(position, zoom)}%` };
+  function getSpriteAnchorXPx(position: SpritePosition): number {
+    const xPct = getSpriteAnchorXPct(position);
+    return Math.round(stageWidth.value * (xPct / 100));
+  }
+
+  function getSpriteShellStyle(position: SpritePosition) {
+    const xPx = getSpriteAnchorXPx(position);
+    return { transform: `translate3d(${xPx}px, 0, 0) translateX(-50%)` };
   }
 
   function getSpriteSwapDuration(sprite: PlayerFrame['sprites'][number]): number {
@@ -1382,14 +1398,16 @@ export function useRenpyPlayerController() {
       isSceneTransitioning: readonly(isSceneTransitioning),
       isHudHidden,
       sceneFadeStyle,
-      backgroundStyle,
+      backgroundCameraStyle,
+      spriteCameraStyle,
       spriteStyle,
       cameraAnimationClass,
       cameraDiagnosticsLabel,
       onSpriteEnter,
       onSpriteLeave,
       onSpriteResolved,
-      setBackgroundElement,
+      setBackgroundCameraElement,
+      setSpriteCameraElement,
       trackSpritePositionTransitions,
     },
 

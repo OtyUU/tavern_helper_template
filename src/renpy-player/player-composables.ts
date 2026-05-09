@@ -344,7 +344,8 @@ export function useScenePresentation(
   const displayedCameraAnimations = ref<PlayerFrame['cameraAnimations']>(undefined);
   const previousDisplayedSprites = ref<PlayerFrame['sprites']>([]);
   const transitionTimeouts = ref<number[]>([]);
-  const backgroundElement = ref<HTMLElement | null>(null);
+  const backgroundCameraElement = ref<HTMLElement | null>(null);
+  const spriteCameraElement = ref<HTMLElement | null>(null);
   const activeCssTransitionTrackers = new WeakMap<HTMLElement, Map<string, () => void>>();
 
   watch(displayedSprites, (_nextSprites, previousSprites) => {
@@ -459,13 +460,21 @@ export function useScenePresentation(
       return;
     }
     
-    // Only background has the actual CSS transition; scene layer is just a container.
-    if (backgroundElement.value) {
+    if (backgroundCameraElement.value) {
       trackCssTransition(
-        backgroundElement.value,
+        backgroundCameraElement.value,
         'transform',
         cameraTransitionMs.value,
-        'camera transform (background)',
+        'camera transform (bg layer)',
+      );
+    }
+
+    if (spriteCameraElement.value) {
+      trackCssTransition(
+        spriteCameraElement.value,
+        'transform',
+        cameraTransitionMs.value,
+        'camera transform (sprite layer)',
       );
     }
   }
@@ -545,9 +554,12 @@ export function useScenePresentation(
     }, fallbackMs);
   }
   
-  /** Called from SceneLayer to provide the background element ref. */
-  function setBackgroundElement(element: HTMLElement | null): void {
-    backgroundElement.value = element;
+  function setBackgroundCameraElement(element: HTMLElement | null): void {
+    backgroundCameraElement.value = element;
+  }
+
+  function setSpriteCameraElement(element: HTMLElement | null): void {
+    spriteCameraElement.value = element;
   }
   
   /** Track CSS left transitions on sprites whose position changed. */
@@ -582,7 +594,7 @@ export function useScenePresentation(
         return;
       }
       
-      trackCssTransition(shell, 'left', cameraTransitionMs.value, `sprite left (${sprite.id})`);
+      trackCssTransition(shell, 'transform', cameraTransitionMs.value, `sprite transform (${sprite.id})`);
     });
   }
 
@@ -594,7 +606,8 @@ export function useScenePresentation(
     previousDisplayedSprites,
     clearTransitionTimeouts,
     applyFrame,
-    setBackgroundElement,
+    setBackgroundCameraElement,
+    setSpriteCameraElement,
     trackSpritePositionTransitions,
   };
 }
