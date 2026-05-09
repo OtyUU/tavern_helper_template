@@ -698,8 +698,12 @@ export function useRenpyPlayerController() {
     };
   }
 
+  const activeCameraPreset = computed(() =>
+    resolveActiveCameraPreset(displayedCameraTransform.value),
+  );
+
   const backgroundStyle = computed(() => {
-    const camera = resolveActiveCameraPreset(displayedCameraTransform.value);
+    const camera = activeCameraPreset.value;
     return {
       transform: `scale(${camera.backgroundScale})`,
       transformOrigin: 'center center',
@@ -708,7 +712,7 @@ export function useRenpyPlayerController() {
   });
 
   const spriteStyle = computed(() => {
-    const camera = resolveActiveCameraPreset(displayedCameraTransform.value);
+    const camera = activeCameraPreset.value;
     return {
       '--sprite-scale': camera.spriteScale.toString(),
       '--sprite-y': `${camera.spriteY}%`,
@@ -756,8 +760,9 @@ export function useRenpyPlayerController() {
     { flush: 'post' }
   );
 
-  const renderedSprites = computed(() =>
-    (displayedSprites.value ?? []).map(sprite => {
+  const renderedSprites = computed(() => {
+    const zoom = activeCameraPreset.value.spriteScale;
+    return (displayedSprites.value ?? []).map(sprite => {
       const referenceHeight = getSpriteReferenceHeight(sprite.id);
       const normalizationScale = getSpriteNormalizationScale(sprite);
 
@@ -766,14 +771,14 @@ export function useRenpyPlayerController() {
         renderKey: sprite.id,
         animationClass: getSpriteAnimationClass(sprite.animations),
         shellStyle: {
-          ...getSpriteShellStyle(sprite.position),
+          ...getSpriteShellStyle(sprite.position, zoom),
           '--sprite-ref-height': `${referenceHeight}px`,
           '--sprite-normalize-scale': `${normalizationScale}`,
         },
         swapDurationMs: getSpriteSwapDuration(sprite),
       };
-    }),
-  );
+    });
+  });
 
   function getSpriteReferenceHeight(spriteId: string): number {
     return characterSpriteConfig.value[spriteId]?.referenceHeight ?? settings.value.spriteReferenceHeight;
@@ -806,21 +811,27 @@ export function useRenpyPlayerController() {
     };
   }
 
-  function getSpriteAnchorX(position: 'left' | 'center' | 'right'): number {
+  function getSpriteAnchorX(
+    position: 'left' | 'center' | 'right',
+    zoom: number,
+  ): number {
     const center = settings.value.spriteCenterX;
     const spacing = settings.value.spriteSideSpacing;
-    if (position === 'left') {
-      return Math.max(0, center - spacing);
-    }
-    if (position === 'right') {
-      return Math.min(100, center + spacing);
-    }
-    return center;
+
+    const offset =
+      position === 'left' ? -spacing
+      : position === 'right' ? spacing
+      : 0;
+
+    return clampNumber(center + offset * zoom, 0, 100);
   }
 
-  function getSpriteShellStyle(position: 'left' | 'center' | 'right') {
+  function getSpriteShellStyle(
+    position: 'left' | 'center' | 'right',
+    zoom: number,
+  ) {
     return {
-      left: `${getSpriteAnchorX(position)}%`,
+      left: `${getSpriteAnchorX(position, zoom)}%`,
     };
   }
 
