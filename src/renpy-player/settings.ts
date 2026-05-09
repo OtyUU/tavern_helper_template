@@ -11,6 +11,8 @@ const BaseSettingsSchema = z
     spriteReferenceHeight: z.coerce.number().int().min(1000).max(4000).default(2000),
     spriteCenterX: z.coerce.number().min(0).max(100).default(50),
     spriteSideSpacing: z.coerce.number().min(0).max(50).default(22),
+    spriteMidSpacing: z.coerce.number().min(0).max(60).default(7),
+    spriteFarSpacing: z.coerce.number().min(0).max(60).default(38),
     closeupBackgroundScale: z.coerce.number().min(0.5).max(3.0).default(1.5),
     closeupSpriteScale: z.coerce.number().min(0.5).max(3.0).default(1.8),
     closeupSpriteY: z.coerce.number().min(-500).max(500).default(0),
