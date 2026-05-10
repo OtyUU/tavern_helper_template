@@ -52,7 +52,7 @@ Three phases govern frame playback: `scene → reveal → done`. Every frame adv
 - **`reveal`**: `beginReveal()` starts the typewriter effect. Stage clicks skip to fully revealed text.
 - **`done`**: Ready to advance. Stage clicks move to the next frame; autoplay proceeds after its delay.
 
-To register a new animation with the bus: call `bus.register(cancelFn)` when the animation starts, call the returned cleanup when it finishes. Cleanup must be idempotent. Unregistered animations will not block phase transitions.
+To register a new animation with the bus: call `bus.register(cancelFn)` **synchronously** before the animation begins, and call the returned cleanup when it finishes. Cleanup must be idempotent. If registration is deferred (e.g., inside `requestAnimationFrame` or waiting for an image to load), the FSM will see `count === 0` during the gap and prematurely advance to `reveal`. Unregistered animations will not block phase transitions.
 
 ### Settings Mutation
 
@@ -106,7 +106,9 @@ When navigating between messages, `pendingBridge` supplies the last frame of the
 - **`hudHideScope`** controls when the HUD hides: `'scene-only'` (default) hides during scene crossfades; `'all-motion'` hides during any bus activity. `hudShowInProgress` blocks `scene → reveal` until the HUD show animation completes.
 - **`pendingFrameTarget { kind: 'last' }`** uses `Number.MAX_SAFE_INTEGER` as a sentinel; the `watch(frames)` handler clamps it.
 - **Camera presentation** (`backgroundCameraStyle`, `spriteCameraStyle`, `spriteStyle`, `cameraAnimationClass`) reads from `displayedCamera`/`displayedCameraAnimations`, not `currentFrame`. Camera transitions are inline (`resolvedCameraTransitionMs`) and zeroed during `isSceneTransitioning`.
-- **Fallback timeouts** — CSS transition trackers set `cameraTransitionMs + 50` ms fallbacks in case `transitionend` never fires.
+- **Fallback timeouts** — CSS transition trackers set `cameraTransitionMs + 50` ms fallbacks in case `transitionend` never fires. Sprite enter WAAPI animations also set a 3s fallback if `<SmartImage>` never resolves.
+- **DOM Update Race Conditions** — Changing refs like `displayedSprites` triggers asynchronous Vue DOM patches. To prevent the Phase FSM from advancing to `reveal` *before* Vue calls `<TransitionGroup>` hooks, `applyFrame` holds a temporary `bus.register` lock and releases it in `nextTick`.
+- **Sprite lazy loading and WAAPI** — In `onSpriteEnter`, WAAPI animations must wait for `<SmartImage>` to emit `@resolved` (via `triggerSpriteEnterAnimation`), otherwise the fade runs on a blank unpainted shell. But `bus.register()` must still happen synchronously upfront to block the FSM while the image loads.
 
 ---
 

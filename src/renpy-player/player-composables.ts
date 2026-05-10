@@ -1,5 +1,5 @@
 import type { Ref } from 'vue';
-import { ref, watch } from 'vue';
+import { ref, watch, nextTick } from 'vue';
 import type { PlayerAsset, PlayerFrame } from './types';
 import { normalizeCameraFromFrame } from './camera-utils';
 
@@ -56,6 +56,7 @@ export function useSpriteVisibilityTransitions(
   const activeSpriteVisibilityAnimations = new Set<Animation>();
   const pendingEnterEffectById = new Map<string, SpriteVisibilityEffect>();
   const pendingExitEffectById = new Map<string, SpriteVisibilityEffect>();
+  const pendingEnterAnimations = new Map<string, () => void>();
 
   function prepareSpriteVisibilityEffects(
     previousSprites: PlayerFrame['sprites'],
@@ -143,29 +144,59 @@ export function useSpriteVisibilityTransitions(
       return;
     }
 
-    try {
-      const animation = node.animate(
-        [{ opacity: 0 }, { opacity: 1 }],
-        { duration, easing: 'ease-out', fill: 'forwards' },
-      );
-      spriteVisibilityAnimations.set(node, animation);
-      activeSpriteVisibilityAnimations.add(animation);
-      
-      // Register cancellation with TransitionBus
-      const cleanup = bus.register(() => {
+    // Register with TransitionBus immediately to hold the phase
+    const cleanupBus = bus.register(() => {
+      finished = true;
+      const animation = spriteVisibilityAnimations.get(node);
+      if (animation) {
         animation.cancel();
-      });
-      
-      animation.addEventListener('finish', () => {
-        cleanup();
-        complete();
-      }, { once: true });
-      animation.addEventListener('cancel', () => {
-        cleanup();
-        complete();
-      }, { once: true });
-    } catch {
+      }
       complete();
+    });
+
+    const startAnimation = () => {
+      if (finished) return;
+      try {
+        const animation = node.animate(
+          [{ opacity: 0 }, { opacity: 1 }],
+          { duration, easing: 'ease-out', fill: 'forwards' },
+        );
+        spriteVisibilityAnimations.set(node, animation);
+        activeSpriteVisibilityAnimations.add(animation);
+        
+        animation.addEventListener('finish', () => {
+          cleanupBus();
+          complete();
+        }, { once: true });
+        animation.addEventListener('cancel', () => {
+          cleanupBus();
+          complete();
+        }, { once: true });
+      } catch {
+        cleanupBus();
+        complete();
+      }
+    };
+
+    if (spriteId) {
+      pendingEnterAnimations.set(spriteId, startAnimation);
+      // Fallback in case image resolution fails or takes too long
+      window.setTimeout(() => {
+        if (pendingEnterAnimations.get(spriteId) === startAnimation) {
+          pendingEnterAnimations.delete(spriteId);
+          startAnimation();
+        }
+      }, 3000);
+    } else {
+      startAnimation();
+    }
+  }
+
+  function triggerSpriteEnterAnimation(spriteId: string) {
+    const start = pendingEnterAnimations.get(spriteId);
+    if (start) {
+      pendingEnterAnimations.delete(spriteId);
+      start();
     }
   }
 
@@ -196,30 +227,39 @@ export function useSpriteVisibilityTransitions(
       return;
     }
 
-    try {
-      const animation = node.animate(
-        [{ opacity: 1 }, { opacity: 0 }],
-        { duration, easing: 'ease-out', fill: 'forwards' },
-      );
-      spriteVisibilityAnimations.set(node, animation);
-      activeSpriteVisibilityAnimations.add(animation);
-      
-      // Register cancellation with TransitionBus
-      const cleanup = bus.register(() => {
+    // Register immediately to hold the phase
+    const cleanupBus = bus.register(() => {
+      finished = true;
+      const animation = spriteVisibilityAnimations.get(node);
+      if (animation) {
         animation.cancel();
-      });
-      
-      animation.addEventListener('finish', () => {
-        cleanup();
-        complete();
-      }, { once: true });
-      animation.addEventListener('cancel', () => {
-        cleanup();
-        complete();
-      }, { once: true });
-    } catch {
+      }
       complete();
-    }
+    });
+
+    requestAnimationFrame(() => {
+      if (finished) return;
+      try {
+        const animation = node.animate(
+          [{ opacity: 1 }, { opacity: 0 }],
+          { duration, easing: 'ease-out', fill: 'forwards' },
+        );
+        spriteVisibilityAnimations.set(node, animation);
+        activeSpriteVisibilityAnimations.add(animation);
+        
+        animation.addEventListener('finish', () => {
+          cleanupBus();
+          complete();
+        }, { once: true });
+        animation.addEventListener('cancel', () => {
+          cleanupBus();
+          complete();
+        }, { once: true });
+      } catch {
+        cleanupBus();
+        complete();
+      }
+    });
   }
 
   function clearSpriteVisibilityTransitions() {
@@ -227,6 +267,7 @@ export function useSpriteVisibilityTransitions(
     activeSpriteVisibilityAnimations.clear();
     pendingEnterEffectById.clear();
     pendingExitEffectById.clear();
+    pendingEnterAnimations.clear();
   }
 
   return {
@@ -234,6 +275,7 @@ export function useSpriteVisibilityTransitions(
     onSpriteLeave,
     prepareSpriteVisibilityEffects,
     clearSpriteVisibilityTransitions,
+    triggerSpriteEnterAnimation,
   };
 }
 
@@ -382,6 +424,14 @@ export function useScenePresentation(
 
   function applyFrame(next: PlayerFrame | null, prev: PlayerFrame | null): void {
     clearTransitionTimeouts();
+
+    // Lock the bus temporarily to prevent the phase FSM from advancing before Vue updates the DOM.
+    // TransitionGroup hooks (onSpriteEnter/Leave) fire synchronously during DOM patch.
+    // By the time nextTick executes, those hooks will have registered their actual animations.
+    const unlockDomUpdate = bus.register(() => {});
+    nextTick(() => {
+      unlockDomUpdate();
+    });
 
     if (!next) {
       resetDisplayedState();

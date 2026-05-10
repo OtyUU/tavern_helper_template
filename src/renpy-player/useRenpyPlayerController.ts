@@ -223,6 +223,7 @@ export function useRenpyPlayerController() {
     onSpriteLeave,
     prepareSpriteVisibilityEffects,
     clearSpriteVisibilityTransitions,
+    triggerSpriteEnterAnimation,
   } = useSpriteVisibilityTransitions(
     settings,
     isSceneTransitioning,
@@ -673,7 +674,9 @@ export function useRenpyPlayerController() {
       '--renpy-hud-hide-drift-ms': msOrZero(Math.round(settings.value.hudHideDurationMs * 1.25)),
       '--renpy-hud-drift-px': `${settings.value.hudHideDriftPx}px`,
 
-      '--renpy-sprite-offset-y': `${settings.value.spriteBaselineOffsetPx}px`,
+      '--renpy-sprite-offset-y': `${Math.round(
+        settings.value.spriteBaselineOffsetPx * settings.value.stageHeight / 480,
+      )}px`,
       '--sprite-y': 'var(--renpy-sprite-offset-y, 0px)',
     };
   });
@@ -829,6 +832,7 @@ export function useRenpyPlayerController() {
     if (characterNaturalHeights.value[spriteId] === undefined) {
       characterNaturalHeights.value[spriteId] = payload.naturalHeight;
     }
+    triggerSpriteEnterAnimation(spriteId);
   }
 
   function onAssetResolutionStatus(
@@ -989,6 +993,7 @@ export function useRenpyPlayerController() {
     // (But edits/refreshes of the same message no longer forcibly reset.)
     if (messageId !== previousActiveId) {
       frameIndex.value = 0;
+      motionMode.value = 'normal';
     }
   }
 
