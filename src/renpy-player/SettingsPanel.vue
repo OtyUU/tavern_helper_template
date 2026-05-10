@@ -139,19 +139,19 @@
 
           <div class="renpy-player-settings__field">
             <label>Visibility effect</label>
-            <select v-model="settings.spriteVisibilityEffect" class="text_pole">
-              <option value="fade">fade</option>
-              <option value="none">none</option>
-            </select>
+            <CustomSelect
+              v-model="settings.spriteVisibilityEffect"
+              :options="[{ value: 'fade', label: 'fade' }, { value: 'none', label: 'none' }]"
+            />
             <small>Use <code>none</code> for instant sprite show/hide.</small>
           </div>
 
           <div class="renpy-player-settings__field">
             <label>HUD hide scope</label>
-            <select v-model="settings.hudHideScope" class="text_pole">
-              <option value="scene-only">Scene only</option>
-              <option value="all-motion">All motion</option>
-            </select>
+            <CustomSelect
+              v-model="settings.hudHideScope"
+              :options="[{ value: 'scene-only', label: 'Scene only' }, { value: 'all-motion', label: 'All motion' }]"
+            />
             <small>Hide HUD during scene crossfade only, or during any visual motion.</small>
           </div>
 
@@ -332,6 +332,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
 import { useRenpyPlayerSettingsStore } from './settings';
+import CustomSelect from './CustomSelect.vue';
 
 const store = useRenpyPlayerSettingsStore();
 const { settings, characterSpriteConfigError } = storeToRefs(store);

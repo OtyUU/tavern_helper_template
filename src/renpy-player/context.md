@@ -18,7 +18,7 @@ Five steps, spanning four files — this is the core mental model:
 
 ## The displayed/current Split
 
-`SceneLayer` and camera computeds read from `displayedBackground`, `displayedSprites`, `displayedCameraTransform`, and `displayedCameraAnimations` — not from `currentFrame`. During a scene crossfade, these refs update at deliberate moments (background/camera at midpoint, sprites at the end). **Any new visual presentation code must read from `displayed*` refs, never from `currentFrame` directly.**
+`SceneLayer` and camera computeds read from `displayedBackground`, `displayedSprites`, `displayedCamera` (`PlayerCameraIntent`), and `displayedCameraAnimations` — not from `currentFrame`. During a scene crossfade, these refs update at deliberate moments (background/camera at midpoint, sprites at the end). **Any new visual presentation code must read from `displayed*` refs, never from `currentFrame` directly.**
 
 ## Runtime Environment
 
@@ -77,6 +77,17 @@ Prevents the viewport from showing a half-generated message:
 - `'normal'` — set by forward navigation and cross-message forward jumps.
 - `effectsDisabled = prefersReducedMotion || motionMode === 'instant'` — governs whether animations play.
 
+### Two-Layer Camera Architecture
+
+Camera pan + zoom is applied to two sibling `renpy-player__camera-layer` divs in `SceneLayer.vue`, not to individual sprites or the background element. Each layer gets its own computed style (`backgroundCameraStyle` / `spriteCameraStyle`) with `translate(x, y) scale(zoom)`.
+
+- **Unified zoom.** A single `backgroundScale` per preset controls zoom for both layers. The old separate `spriteScale` is dead — `spriteStyle` always sets `--sprite-scale: 1`. The schema still carries `*SpriteScale` fields for backward compatibility but nothing reads them.
+- **Parallax.** `bgPanParallax` (0–1) multiplies the pan offset on the background camera layer. At 1.0 the background pans identically to sprites; below 1.0 it moves less (parallax effect).
+- **Inline transitions.** Camera layers use `resolvedCameraTransitionMs` (a computed, not a CSS variable) which returns 0 when `effectsDisabled` or `isSceneTransitioning`. This avoids sub-pixel jitter from `translate3d` + CSS-variable-based transitions.
+- **Pixel-based sprite shells.** Sprite horizontal position is `transform: translate3d(xPx, 0, 0) translateX(-50%)` computed via `stageWidth`, not a `left: %`. This is because camera-layer `scale()` would distort percentage-based `left` positions.
+- **`PlayerCameraIntent`** (types.ts) carries `preset`, `panXPct?`, `panYPct?` — no pixel values, safe to persist through history replay. `normalizeCameraFromFrame()` in `camera-utils.ts` migrates legacy `cameraTransform` frames.
+- **Transition tracking.** `useScenePresentation` tracks `transform` transitions on both camera layer elements (`backgroundCameraElement`, `spriteCameraElement`), not on the background `<img>` directly.
+
 ### Cross-Message Bridge
 
 When navigating between messages, `pendingBridge` supplies the last frame of the previous message as `prevFrame` to `applyFrame`, so scene transitions animate correctly rather than snapping from `null`.
@@ -94,7 +105,7 @@ When navigating between messages, `pendingBridge` supplies the last frame of the
 - **`autoPlayDelayMs`** in settings schema is a dead field — not read anywhere. Do not wire new code to it. Use `autoAdvanceDelayMs` instead.
 - **`hudHideScope`** controls when the HUD hides: `'scene-only'` (default) hides during scene crossfades; `'all-motion'` hides during any bus activity. `hudShowInProgress` blocks `scene → reveal` until the HUD show animation completes.
 - **`pendingFrameTarget { kind: 'last' }`** uses `Number.MAX_SAFE_INTEGER` as a sentinel; the `watch(frames)` handler clamps it.
-- **Camera presentation** (`backgroundStyle`, `spriteStyle`, `cameraAnimationClass`) reads from `displayedCameraTransform`/`displayedCameraAnimations`, not `currentFrame`. `--renpy-camera-transition-ms` is zeroed during `isSceneTransitioning`.
+- **Camera presentation** (`backgroundCameraStyle`, `spriteCameraStyle`, `spriteStyle`, `cameraAnimationClass`) reads from `displayedCamera`/`displayedCameraAnimations`, not `currentFrame`. Camera transitions are inline (`resolvedCameraTransitionMs`) and zeroed during `isSceneTransitioning`.
 - **Fallback timeouts** — CSS transition trackers set `cameraTransitionMs + 50` ms fallbacks in case `transitionend` never fires.
 
 ---
