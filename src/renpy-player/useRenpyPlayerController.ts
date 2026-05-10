@@ -720,20 +720,26 @@ export function useRenpyPlayerController() {
 
   const zoom = computed(() => activeCameraPreset.value.backgroundScale);
 
+  const resolvedCameraTransitionMs = computed(() =>
+    (effectsDisabled.value || isSceneTransitioning.value) ? 0 : settings.value.cameraTransitionMs,
+  );
+
   const backgroundCameraStyle = computed(() => {
     const mult = settings.value.bgPanParallax ?? 1;
+    const ms = resolvedCameraTransitionMs.value;
     return {
-      transform: `translate3d(${cameraPanXPx.value * mult}px, ${cameraPanYPx.value * mult}px, 0) scale(${zoom.value})`,
+      transform: `translate(${cameraPanXPx.value * mult}px, ${cameraPanYPx.value * mult}px) scale(${zoom.value})`,
       transformOrigin: 'center center',
-      transition: 'transform var(--renpy-camera-transition-ms) ease',
+      transition: ms > 0 ? `transform ${ms}ms ease` : 'none',
     };
   });
 
   const spriteCameraStyle = computed(() => {
+    const ms = resolvedCameraTransitionMs.value;
     return {
-      transform: `translate3d(${cameraPanXPx.value}px, ${cameraPanYPx.value}px, 0) scale(${zoom.value})`,
+      transform: `translate(${cameraPanXPx.value}px, ${cameraPanYPx.value}px) scale(${zoom.value})`,
       transformOrigin: 'center center',
-      transition: 'transform var(--renpy-camera-transition-ms) ease',
+      transition: ms > 0 ? `transform ${ms}ms ease` : 'none',
     };
   });
 
