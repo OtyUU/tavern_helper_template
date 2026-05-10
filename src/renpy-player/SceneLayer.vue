@@ -50,6 +50,8 @@
             :candidates="sprite.asset?.candidates ?? []"
             :alt="sprite.asset?.description ?? sprite.id"
             :swap-duration-ms="sprite.swapDurationMs"
+            :downscale="true"
+            :target-height-px="sprite.targetHeightPx"
             @resolved="controller.scene.onSpriteResolved(sprite.id, $event)"
             @resolution-status="controller.diagnostics.onAssetResolutionStatus(sprite.id, $event)"
           />

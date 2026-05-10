@@ -796,6 +796,8 @@ export function useRenpyPlayerController() {
       const referenceHeight = getSpriteReferenceHeight(sprite.id);
       const normalizationScale = getSpriteNormalizationScale(sprite);
 
+      const targetHeightPx = settings.value.stageHeight;
+
       return {
         ...sprite,
         renderKey: sprite.id,
@@ -806,6 +808,7 @@ export function useRenpyPlayerController() {
           '--sprite-normalize-scale': `${normalizationScale}`,
         },
         swapDurationMs: getSpriteSwapDuration(sprite),
+        targetHeightPx,
       };
     });
   });
