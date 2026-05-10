@@ -91,7 +91,7 @@
   --sprite-y: 0%;
   transform:
     translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)));
-  transform-origin: center bottom;
+  transform-origin: center center;
   transition: transform var(--renpy-camera-transition-ms) ease;
 }
 

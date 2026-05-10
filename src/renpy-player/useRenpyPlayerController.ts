@@ -3,11 +3,11 @@ import { storeToRefs } from 'pinia';
 import { computed, onMounted, onScopeDispose, reactive, readonly, ref, watch } from 'vue';
 import { buildFrames, getInitialState, parseScriptFromMessage } from './parser';
 import {
-    useAutoplay,
-    useDialogueReveal,
-    useReducedMotion,
-    useScenePresentation,
-    useSpriteVisibilityTransitions,
+  useAutoplay,
+  useDialogueReveal,
+  useReducedMotion,
+  useScenePresentation,
+  useSpriteVisibilityTransitions,
 } from './player-composables';
 import { useRenpyPlayerSettingsStore } from './settings';
 import type { PlayerFrame, SpritePosition } from './types';
