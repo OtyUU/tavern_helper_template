@@ -8,7 +8,7 @@ const BaseSettingsSchema = z
     defaultBackgroundScale: z.coerce.number().min(0.5).max(3.0).default(1.0),
     defaultSpriteScale: z.coerce.number().min(0.5).max(3.0).default(1.0),
     defaultSpriteY: z.coerce.number().min(-500).max(500).default(0),
-    spriteReferenceHeight: z.coerce.number().int().min(1000).max(4000).default(2000),
+    spriteReferenceHeight: z.coerce.number().int().min(500).max(4000).default(2000),
     spriteBaselineOffsetPx: z.coerce.number().int().min(-2000).max(2000).default(0),
     spriteCenterX: z.coerce.number().min(0).max(100).default(50),
     spriteSideSpacing: z.coerce.number().min(0).max(50).default(22),
@@ -115,7 +115,7 @@ function loadPersistedSettings(scriptId: string): {
 const CharacterSpriteConfigEntryFieldSchemas = {
   defaultOutfit: z.string().optional(),
   poseTokens: z.array(z.string()).optional(),
-  referenceHeight: z.coerce.number().int().min(1000).max(4000).optional(),
+  referenceHeight: z.coerce.number().int().min(500).max(4000).optional(),
 } satisfies Record<string, z.ZodTypeAny>;
 
 function parseCharacterSpriteConfig(source: string): {

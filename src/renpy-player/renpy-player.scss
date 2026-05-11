@@ -56,6 +56,9 @@
 
 .renpy-player__camera-layer {
   transform-origin: center center;
+}
+
+.renpy-player__camera-layer--animating {
   will-change: transform;
 }
 
@@ -92,7 +95,6 @@
   justify-content: center;
   z-index: 1;
   transition: transform var(--renpy-camera-transition-ms) ease;
-  will-change: transform;
   --sprite-ref-height: 2000px;
   --sprite-normalize-scale: 1;
 }
@@ -106,6 +108,7 @@
     translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)));
   transform-origin: center center;
   transition: transform var(--renpy-camera-transition-ms) ease;
+  will-change: transform;
 }
 
 /* SmartImage root element has class "smart-image" + "renpy-player__sprite".
@@ -120,6 +123,8 @@
   height: 100%;
   object-fit: contain;
   object-position: center bottom;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 /* SmartImage previous layer uses position:absolute; inset:0 by default, which would force width stretching.

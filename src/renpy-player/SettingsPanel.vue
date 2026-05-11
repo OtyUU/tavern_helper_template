@@ -260,7 +260,7 @@
             v-model.number="settings.spriteReferenceHeight"
             class="text_pole"
             type="number"
-            min="1000"
+            min="500"
             max="4000"
             step="50"
           />

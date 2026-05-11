@@ -823,6 +823,10 @@ export function useRenpyPlayerController() {
     () => getCameraAnimationClass(displayedCameraAnimations.value),
   );
 
+  const cameraLayerAnimatingClass = computed(() =>
+    resolvedCameraTransitionMs.value > 0 ? 'renpy-player__camera-layer--animating' : '',
+  );
+
   const cameraDiagnosticsLabel = computed(() => {
     const parts = [
       displayedCamera.value?.preset ?? 'default',
@@ -1484,6 +1488,7 @@ export function useRenpyPlayerController() {
       spriteCameraStyle,
       spriteStyle,
       cameraAnimationClass,
+      cameraLayerAnimatingClass,
       cameraDiagnosticsLabel,
       onSpriteEnter,
       onSpriteLeave,

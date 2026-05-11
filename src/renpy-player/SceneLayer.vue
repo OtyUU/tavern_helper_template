@@ -12,6 +12,7 @@
     <div
       ref="bgCameraRef"
       class="renpy-player__camera-layer renpy-player__camera-layer--bg"
+      :class="controller.scene.cameraLayerAnimatingClass"
       :style="controller.scene.backgroundCameraStyle"
     >
       <SmartImage
@@ -27,6 +28,7 @@
     <div
       ref="spriteCameraRef"
       class="renpy-player__camera-layer renpy-player__camera-layer--sprites"
+      :class="controller.scene.cameraLayerAnimatingClass"
       :style="controller.scene.spriteCameraStyle"
     >
       <TransitionGroup
