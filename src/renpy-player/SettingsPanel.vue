@@ -207,7 +207,8 @@
             <h5>Default</h5>
             <div class="renpy-player-settings__field">
               <label>Camera scale</label>
-              <input v-model.number="settings.defaultBackgroundScale" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
+              <input v-model.number="cameraScaleDefault" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
+              <small>Scales both background and sprites together.</small>
             </div>
             <div class="renpy-player-settings__field">
               <label>Camera pan Y (%)</label>
@@ -241,7 +242,8 @@
             <h5>Medium</h5>
             <div class="renpy-player-settings__field">
               <label>Camera scale</label>
-              <input v-model.number="settings.mediumBackgroundScale" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
+              <input v-model.number="cameraScaleMedium" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
+              <small>Scales both background and sprites together.</small>
             </div>
             <div class="renpy-player-settings__field">
               <label>Camera pan Y (%)</label>
@@ -253,7 +255,8 @@
             <h5>Closeup</h5>
             <div class="renpy-player-settings__field">
               <label>Camera scale</label>
-              <input v-model.number="settings.closeupBackgroundScale" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
+              <input v-model.number="cameraScaleCloseup" class="text_pole" type="number" min="0.5" max="3.0" step="0.1" />
+              <small>Scales both background and sprites together.</small>
             </div>
             <div class="renpy-player-settings__field">
               <label>Camera pan Y (%)</label>
@@ -374,6 +377,31 @@ const charConfigPlaceholder = JSON.stringify(
   null,
   2,
 );
+
+// Unified camera scale controls that sync both background and sprite scales
+const cameraScaleDefault = computed({
+  get: () => settings.value.defaultBackgroundScale,
+  set: (value: number) => {
+    settings.value.defaultBackgroundScale = value;
+    settings.value.defaultSpriteScale = value;
+  },
+});
+
+const cameraScaleMedium = computed({
+  get: () => settings.value.mediumBackgroundScale,
+  set: (value: number) => {
+    settings.value.mediumBackgroundScale = value;
+    settings.value.mediumSpriteScale = value;
+  },
+});
+
+const cameraScaleCloseup = computed({
+  get: () => settings.value.closeupBackgroundScale,
+  set: (value: number) => {
+    settings.value.closeupBackgroundScale = value;
+    settings.value.closeupSpriteScale = value;
+  },
+});
 </script>
 
 <style scoped lang="scss">

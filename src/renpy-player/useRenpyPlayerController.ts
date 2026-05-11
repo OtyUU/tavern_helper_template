@@ -827,7 +827,8 @@ export function useRenpyPlayerController() {
     return Math.round(settings.value.stageHeight * ((presetPct + intentPct) / 100));
   });
 
-  const zoom = computed(() => activeCameraPreset.value.backgroundScale);
+  const spriteZoom = computed(() => activeCameraPreset.value.spriteScale);
+  const backgroundZoomBase = computed(() => activeCameraPreset.value.backgroundScale);
 
   /**
    * Background zoom with parallax effect.
@@ -839,7 +840,7 @@ export function useRenpyPlayerController() {
    * - zoom=0.8, parallax=0.4: bgZoom = 1.0 + (0.8-1.0)*0.4 = 0.92
    */
   const backgroundZoom = computed(() => {
-    const baseZoom = zoom.value;
+    const baseZoom = backgroundZoomBase.value;
     const parallaxFactor = settings.value.bgZoomParallax ?? 0.4;
     return 1.0 + (baseZoom - 1.0) * parallaxFactor;
   });
@@ -852,8 +853,9 @@ export function useRenpyPlayerController() {
     const panXMult = settings.value.bgPanParallax ?? 1;
     const panYMult = settings.value.bgPanParallaxY ?? 0.7;
     const ms = resolvedCameraTransitionMs.value;
+    
     return {
-      transform: `translate(${cameraPanXPx.value * panXMult}px, ${cameraPanYPx.value * panYMult}px) scale(${backgroundZoom.value})`,
+      transform: `scale(${backgroundZoom.value}) translate(${cameraPanXPx.value * panXMult}px, ${cameraPanYPx.value * panYMult}px)`,
       transformOrigin: 'center center',
       transition: ms > 0 ? `transform ${ms}ms ease` : 'none',
     };
@@ -861,8 +863,9 @@ export function useRenpyPlayerController() {
 
   const spriteCameraStyle = computed(() => {
     const ms = resolvedCameraTransitionMs.value;
+    
     return {
-      transform: `translate(${cameraPanXPx.value}px, ${cameraPanYPx.value}px) scale(${zoom.value})`,
+      transform: `scale(${spriteZoom.value}) translate(${cameraPanXPx.value}px, ${cameraPanYPx.value}px)`,
       transformOrigin: 'center center',
       transition: ms > 0 ? `transform ${ms}ms ease` : 'none',
     };
@@ -887,7 +890,7 @@ export function useRenpyPlayerController() {
       displayedCamera.value?.preset ?? 'default',
       `panX:${cameraPanXPct.value.toFixed(1)}% (${cameraPanXPx.value}px)`,
       `panY:${cameraPanYPx.value}px`,
-      `zoom:${zoom.value.toFixed(2)}`,
+      `spriteZoom:${spriteZoom.value.toFixed(2)}`,
       `bgZoom:${backgroundZoom.value.toFixed(2)}`,
       ...(displayedCameraAnimations.value ?? []),
     ];
