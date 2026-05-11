@@ -57,6 +57,18 @@ export function useRenpyPlayerController() {
   type PendingBridge = { targetKey: string; prevFrame: PlayerFrame };
   const pendingBridge = ref<PendingBridge | null>(null);
 
+  /**
+   * Logical "previous frame" used for diffs (sprite swap duration, camera diffs, etc).
+   *
+   * Important: this must NOT be derived from displayed state, because displayed state
+   * can be temporarily cleared during scene crossfades (midpoint), which would break
+   * "previous" comparisons and cause swap durations to incorrectly become 0.
+   *
+   * This is set in the currentFrame watcher using the same effectivePrev frame passed
+   * into applyFrame() (bridge-aware).
+   */
+  const prevFrameForDiff = ref<PlayerFrame | null>(null);
+
   type PendingFrameTarget = null | { kind: 'first' } | { kind: 'last' };
   const pendingFrameTarget = ref<PendingFrameTarget>(null);
 
@@ -239,7 +251,6 @@ export function useRenpyPlayerController() {
     displayedSprites,
     displayedCamera,
     displayedCameraAnimations,
-    previousDisplayedSprites,
     clearTransitionTimeouts,
     applyFrame,
     setBackgroundCameraElement,
@@ -876,7 +887,9 @@ export function useRenpyPlayerController() {
     if (effectsDisabled.value) {
       return 0;
     }
-    const previousSprite = previousDisplayedSprites.value.find(candidate => candidate.id === sprite.id);
+
+    const prevSprites = prevFrameForDiff.value?.sprites ?? [];
+    const previousSprite = prevSprites.find(candidate => candidate.id === sprite.id);
     if (!previousSprite?.asset || !sprite.asset || previousSprite.asset.description === sprite.asset.description) {
       return 0;
     }
@@ -921,6 +934,8 @@ export function useRenpyPlayerController() {
       if (bridge && bridge.targetKey === nextKey) {
         pendingBridge.value = null;
       }
+
+      prevFrameForDiff.value = nextFrame ? effectivePrev : null;
 
       if (nextFrame !== previousFrame) {
         resetToScene('currentFrame changed');
