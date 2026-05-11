@@ -777,9 +777,48 @@ export function useRenpyPlayerController() {
     resolveActiveCameraPreset(displayedCamera.value),
   );
 
+  /**
+   * Calculate automatic horizontal pan to center all visible sprites.
+   * Returns the pan offset as a percentage of stage width.
+   */
+  const autoPanXPct = computed(() => {
+    const sprites = displayedSprites.value ?? [];
+    if (sprites.length === 0) return 0;
+
+    // Get X positions of all visible sprites in percentage
+    const spriteXPositions = sprites.map(sprite => getSpriteAnchorXPct(sprite.position));
+    
+    // Find the leftmost and rightmost sprite positions
+    const minX = Math.min(...spriteXPositions);
+    const maxX = Math.max(...spriteXPositions);
+    
+    // Calculate the center point between leftmost and rightmost sprites
+    const spritesCenter = (minX + maxX) / 2;
+    
+    // Stage center is at 50%
+    const stageCenter = 50;
+    
+    // Calculate how much we need to pan to center the sprites
+    // Negative pan moves camera left (sprites appear to move right)
+    // Positive pan moves camera right (sprites appear to move left)
+    const panOffset = stageCenter - spritesCenter;
+    
+    // Apply sensitivity (0 = no auto pan, 1 = full auto pan)
+    const sensitivity = settings.value.autoPanSensitivity;
+    return panOffset * sensitivity;
+  });
+
+  const cameraPanXPct = computed(() => {
+    // Use manual pan if specified, otherwise use auto-calculated pan
+    const manualPct = displayedCamera.value?.panXPct;
+    if (manualPct !== undefined) {
+      return manualPct;
+    }
+    return autoPanXPct.value;
+  });
+
   const cameraPanXPx = computed(() => {
-    const pct = displayedCamera.value?.panXPct ?? 0;
-    return Math.round(stageWidth.value * (pct / 100));
+    return Math.round(stageWidth.value * (cameraPanXPct.value / 100));
   });
 
   const cameraPanYPx = computed(() => {
@@ -830,6 +869,7 @@ export function useRenpyPlayerController() {
   const cameraDiagnosticsLabel = computed(() => {
     const parts = [
       displayedCamera.value?.preset ?? 'default',
+      `panX:${cameraPanXPct.value.toFixed(1)}% (${cameraPanXPx.value}px)`,
       `panY:${cameraPanYPx.value}px`,
       ...(displayedCameraAnimations.value ?? []),
     ];

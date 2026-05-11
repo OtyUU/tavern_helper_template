@@ -184,6 +184,12 @@
           <small>How much the background follows camera pan. Lower = stronger parallax.</small>
         </div>
 
+        <div class="renpy-player-settings__field">
+          <label>Auto-pan sensitivity (0..1)</label>
+          <input v-model.number="settings.autoPanSensitivity" class="text_pole" type="number" min="0" max="1" step="0.05" />
+          <small>How strongly the camera auto-centers sprites. 0 = disabled, 1 = full centering.</small>
+        </div>
+
         <div class="renpy-player-settings__camera-grid">
           <div class="renpy-player-settings__camera-card">
             <h5>Default</h5>

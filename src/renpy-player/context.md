@@ -105,6 +105,7 @@ Camera pan + zoom is applied to two sibling `renpy-player__camera-layer` divs in
 - **Inline transitions.** Camera layers use `resolvedCameraTransitionMs` (a computed, not a CSS variable) which returns 0 when `effectsDisabled` or `isSceneTransitioning`. This avoids sub-pixel jitter from `translate3d` + CSS-variable-based transitions.
 - **Pixel-based sprite shells.** Sprite horizontal position is `transform: translate3d(xPx, 0, 0) translateX(-50%)` computed via `stageWidth`, not a `left: %`. This is because camera-layer `scale()` would distort percentage-based `left` positions.
 - **`PlayerCameraIntent`** (types.ts) carries `preset`, `panXPct?`, `panYPct?` — no pixel values, safe to persist through history replay. `normalizeCameraFromFrame()` in `camera-utils.ts` migrates legacy `cameraTransform` frames.
+- **Automatic horizontal pan.** When `panXPct` is undefined in `PlayerCameraIntent`, the camera automatically centers all visible sprites. `autoPanXPct` computes the center point between the leftmost and rightmost sprites, then calculates the pan offset needed to center that point on stage. Manual `panXPct` values (when implemented in parser) override this behavior.
 - **Transition tracking.** `useScenePresentation` tracks `transform` transitions on both camera layer elements (`backgroundCameraElement`, `spriteCameraElement`), not on the background `<img>` directly.
 
 ### Cross-Message Bridge

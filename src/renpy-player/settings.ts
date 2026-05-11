@@ -21,6 +21,7 @@ const BaseSettingsSchema = z
     mediumSpriteScale: z.coerce.number().min(0.5).max(3.0).default(1.3),
     mediumSpriteY: z.coerce.number().min(-600).max(600).default(0),
     bgPanParallax: z.coerce.number().min(0).max(1).default(0.85),
+    autoPanSensitivity: z.coerce.number().min(0).max(1).default(1.0),
     cameraTransitionMs: z.coerce.number().int().min(0).max(5000).default(350),
     sceneTransitionMs: z.coerce.number().int().min(0).max(2000).default(600),
     expressionChangeMs: z.coerce.number().int().min(0).max(2000).default(160),
