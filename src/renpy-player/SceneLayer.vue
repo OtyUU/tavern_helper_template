@@ -77,25 +77,26 @@ onMounted(() => {
   controller.scene.setSpriteCameraElement(spriteCameraRef.value);
 });
 
+/**
+ * Track sprite position transitions (horizontal movement via CSS transform).
+ * 
+ * Fires when renderedSprites change (add/remove/reorder/position).
+ * trackSpritePositionTransitions() internally filters to only track sprites
+ * whose position actually changed (compares displayedSprites vs previousDisplayedSprites).
+ * 
+ * flush: 'post' ensures:
+ * - DOM has been patched (spriteShellRefs are up-to-date)
+ * - Runs before nextTick (before DOM lock unlock in applyFrame)
+ * So bus entries are registered before phase FSM can advance.
+ */
 watch(
-  () => controller.scene.renderedSprites.map(s => ({ id: s.id, position: s.position })),
-  (newPositions, oldPositions) => {
-    if (!oldPositions || oldPositions.length === 0) {
-      return;
-    }
-
-    const positionsChanged = newPositions.some((newPos) => {
-      const oldPos = oldPositions.find(p => p.id === newPos.id);
-      return oldPos && oldPos.position !== newPos.position;
-    });
-
-    if (positionsChanged) {
-      setTimeout(() => {
-        controller.scene.trackSpritePositionTransitions(spriteShellRefs.value);
-      }, 0);
-    }
+  () => controller.scene.renderedSprites.map(s => `${s.id}:${s.position}`).join('|'),
+  (signature, prevSignature) => {
+    if (!prevSignature) return; // Skip initial run
+    if (signature === prevSignature) return; // No change
+    controller.scene.trackSpritePositionTransitions(spriteShellRefs.value);
   },
-  { deep: true }
+  { flush: 'post' }
 );
 
 onUnmounted(() => {
