@@ -179,9 +179,21 @@
         </div>
 
         <div class="renpy-player-settings__field">
-          <label>Background parallax (0..1)</label>
+          <label>Background parallax X (0..1)</label>
           <input v-model.number="settings.bgPanParallax" class="text_pole" type="number" min="0" max="1" step="0.05" />
-          <small>How much the background follows camera pan. Lower = stronger parallax.</small>
+          <small>Horizontal pan parallax. Lower = stronger depth effect (bg moves slower).</small>
+        </div>
+
+        <div class="renpy-player-settings__field">
+          <label>Background parallax Y (0..1)</label>
+          <input v-model.number="settings.bgPanParallaxY" class="text_pole" type="number" min="0" max="1" step="0.05" />
+          <small>Vertical pan parallax. Lower = stronger depth effect (bg moves slower).</small>
+        </div>
+
+        <div class="renpy-player-settings__field">
+          <label>Background zoom parallax (0..1)</label>
+          <input v-model.number="settings.bgZoomParallax" class="text_pole" type="number" min="0" max="1" step="0.05" />
+          <small>Zoom parallax. Lower = bg zooms less than sprites (stronger depth).</small>
         </div>
 
         <div class="renpy-player-settings__field">

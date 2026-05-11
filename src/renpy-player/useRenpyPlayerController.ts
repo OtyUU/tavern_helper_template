@@ -829,15 +829,31 @@ export function useRenpyPlayerController() {
 
   const zoom = computed(() => activeCameraPreset.value.backgroundScale);
 
+  /**
+   * Background zoom with parallax effect.
+   * Formula: bgZoom = 1.0 + (zoom - 1.0) * parallaxFactor
+   * 
+   * Examples:
+   * - zoom=1.5, parallax=0.4: bgZoom = 1.0 + (1.5-1.0)*0.4 = 1.2
+   * - zoom=2.0, parallax=0.4: bgZoom = 1.0 + (2.0-1.0)*0.4 = 1.4
+   * - zoom=0.8, parallax=0.4: bgZoom = 1.0 + (0.8-1.0)*0.4 = 0.92
+   */
+  const backgroundZoom = computed(() => {
+    const baseZoom = zoom.value;
+    const parallaxFactor = settings.value.bgZoomParallax ?? 0.4;
+    return 1.0 + (baseZoom - 1.0) * parallaxFactor;
+  });
+
   const resolvedCameraTransitionMs = computed(() =>
     (effectsDisabled.value || isSceneTransitioning.value) ? 0 : settings.value.cameraTransitionMs,
   );
 
   const backgroundCameraStyle = computed(() => {
-    const mult = settings.value.bgPanParallax ?? 1;
+    const panXMult = settings.value.bgPanParallax ?? 1;
+    const panYMult = settings.value.bgPanParallaxY ?? 0.7;
     const ms = resolvedCameraTransitionMs.value;
     return {
-      transform: `translate(${cameraPanXPx.value * mult}px, ${cameraPanYPx.value * mult}px) scale(${zoom.value})`,
+      transform: `translate(${cameraPanXPx.value * panXMult}px, ${cameraPanYPx.value * panYMult}px) scale(${backgroundZoom.value})`,
       transformOrigin: 'center center',
       transition: ms > 0 ? `transform ${ms}ms ease` : 'none',
     };
@@ -871,6 +887,8 @@ export function useRenpyPlayerController() {
       displayedCamera.value?.preset ?? 'default',
       `panX:${cameraPanXPct.value.toFixed(1)}% (${cameraPanXPx.value}px)`,
       `panY:${cameraPanYPx.value}px`,
+      `zoom:${zoom.value.toFixed(2)}`,
+      `bgZoom:${backgroundZoom.value.toFixed(2)}`,
       ...(displayedCameraAnimations.value ?? []),
     ];
     return parts.join(', ');
