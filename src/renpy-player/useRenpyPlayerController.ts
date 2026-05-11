@@ -277,28 +277,53 @@ export function useRenpyPlayerController() {
 
   const activeSwapTrackers = new Map<string, () => void>();
 
-  function onSpriteSwapStart(spriteId: string, { duration }: { duration: number }): void {
-    if (effectsDisabled.value || duration <= 0) return;
+  type SmartImageSwapPayload = { duration: number };
 
-    activeSwapTrackers.get(spriteId)?.();
-
-    let timeoutHandle: number | null = null;
-    const cleanup = bus.register(() => {
-      if (timeoutHandle !== null) window.clearTimeout(timeoutHandle);
-    }, `sprite-swap:${spriteId}`);
-
-    timeoutHandle = window.setTimeout(() => {
-      cleanup();
-      activeSwapTrackers.delete(spriteId);
-    }, duration);
-
-    activeSwapTrackers.set(spriteId, cleanup);
+  function clampMs(value: number, fallback = 0): number {
+    if (!Number.isFinite(value)) return fallback;
+    return Math.max(0, Math.round(value));
   }
 
-  function onBackgroundSwapStart({ duration }: { duration: number }): void {
-    if (effectsDisabled.value || duration <= 0) return;
+  function onSmartImageSwapStart(key: string, payload: SmartImageSwapPayload): void {
+    if (effectsDisabled.value) return;
+    if (phase.value !== 'scene') return;
 
-    onSpriteSwapStart('__background__', { duration });
+    if (key === '__background__' && isSceneTransitioning.value) return;
+
+    const durationMs = clampMs(payload?.duration ?? 0, 0);
+    if (durationMs <= 0) return;
+
+    activeSwapTrackers.get(key)?.();
+
+    let finished = false;
+    let timeoutHandle: number | null = null;
+
+    const cancel = () => {
+      if (finished) return;
+      finished = true;
+      if (timeoutHandle !== null) {
+        window.clearTimeout(timeoutHandle);
+        timeoutHandle = null;
+      }
+      activeSwapTrackers.delete(key);
+    };
+
+    const cleanupBus = bus.register(cancel);
+
+    const complete = () => {
+      if (finished) return;
+      finished = true;
+      if (timeoutHandle !== null) {
+        window.clearTimeout(timeoutHandle);
+        timeoutHandle = null;
+      }
+      cleanupBus();
+      activeSwapTrackers.delete(key);
+    };
+
+    timeoutHandle = window.setTimeout(complete, durationMs + 75);
+
+    activeSwapTrackers.set(key, complete);
   }
 
   onScopeDispose(() => {
@@ -1466,8 +1491,7 @@ export function useRenpyPlayerController() {
       setBackgroundCameraElement,
       setSpriteCameraElement,
       trackSpritePositionTransitions,
-      onSpriteSwapStart,
-      onBackgroundSwapStart,
+      onSmartImageSwapStart,
     },
 
     dialogue: {

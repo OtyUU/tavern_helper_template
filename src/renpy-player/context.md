@@ -52,7 +52,26 @@ Three phases govern frame playback: `scene → reveal → done`. Every frame adv
 - **`reveal`**: `beginReveal()` starts the typewriter effect. Stage clicks skip to fully revealed text.
 - **`done`**: Ready to advance. Stage clicks move to the next frame; autoplay proceeds after its delay.
 
-To register a new animation with the bus: call `bus.register(cancelFn)` **synchronously** before the animation begins, and call the returned cleanup when it finishes. Cleanup must be idempotent. If registration is deferred (e.g., inside `requestAnimationFrame` or waiting for an image to load), the FSM will see `count === 0` during the gap and prematurely advance to `reveal`. Unregistered animations will not block phase transitions.
+To register a new animation with the bus: call `bus.register(cancelFn)` **synchronously** before the animation begins, and call the returned cleanup when it finishes. Cleanup must be idempotent.
+
+**Current bus registrations (what blocks `scene → reveal`):**
+
+- ✅ Scene crossfade (full-screen fade, timeout-based, registered in `useScenePresentation.applyFrame`)
+- ✅ Sprite enter/leave visibility fades (WAAPI-based, registered in `useSpriteVisibilityTransitions` TransitionGroup hooks)
+- ✅ Camera transform CSS transitions (registered in `useScenePresentation.trackCameraTransformTransition` when camera preset/pan changes)
+- ✅ Sprite position CSS transitions (registered in `useScenePresentation.trackSpritePositionTransitions` when sprite positions change)
+- ✅ SmartImage swaps (timeout-based, registered in `controller.onSmartImageSwapStart` when `@swap-start` fires during `phase === 'scene'`)
+- ✅ Camera shake animation (fixed 450ms timeout, registered via watcher on `cameraAnimationClass` in controller)
+- ✅ DOM update lock (temporary hold registered in `applyFrame`, released in `nextTick` after Vue patches DOM and component watchers run)
+
+**Intentionally NOT registered (does not block reveal):**
+
+- ❌ Sprite keyframe animations (shake/bounce/pulse) — cosmetic, should not delay dialogue
+- ❌ HUD show/hide animations (handled separately via `hudShowInProgress` / `blockReveal`)
+- ❌ Dialogue text reveal itself (that's what the bus is blocking)
+- ❌ CSS transitions caused by settings/geometry changes (not tied to frame presentation)
+
+**Important policy:** Only animations that affect staging or readability should block reveal. If registration is deferred (e.g., inside `requestAnimationFrame` or waiting for an image to load), the FSM can see `count === 0` during the gap and prematurely advance to `reveal`. Unregistered animations will not block phase transitions.
 
 ### Settings Mutation
 
@@ -107,8 +126,10 @@ When navigating between messages, `pendingBridge` supplies the last frame of the
 - **`pendingFrameTarget { kind: 'last' }`** uses `Number.MAX_SAFE_INTEGER` as a sentinel; the `watch(frames)` handler clamps it.
 - **Camera presentation** (`backgroundCameraStyle`, `spriteCameraStyle`, `spriteStyle`, `cameraAnimationClass`) reads from `displayedCamera`/`displayedCameraAnimations`, not `currentFrame`. Camera transitions are inline (`resolvedCameraTransitionMs`) and zeroed during `isSceneTransitioning`.
 - **Fallback timeouts** — CSS transition trackers set `cameraTransitionMs + 50` ms fallbacks in case `transitionend` never fires. Sprite enter WAAPI animations also set a 3s fallback if `<SmartImage>` never resolves.
+- **SmartImage swap blockers have fallback cleanup.** Swap blockers are de-duped per sprite/background key and auto-cleaned via timeout (`swapDurationMs + 75ms` buffer) even if the element unmounts mid-swap. Cleanup is also run on scope dispose. Swaps that begin after `phase !== 'scene'` are ignored to avoid hiding HUD mid-reveal.
 - **DOM Update Race Conditions** — Changing refs like `displayedSprites` triggers asynchronous Vue DOM patches. To prevent the Phase FSM from advancing to `reveal` *before* Vue calls `<TransitionGroup>` hooks, `applyFrame` holds a temporary `bus.register` lock and releases it in `nextTick`.
 - **Sprite lazy loading and WAAPI** — In `onSpriteEnter`, WAAPI animations must wait for `<SmartImage>` to emit `@resolved` (via `triggerSpriteEnterAnimation`), otherwise the fade runs on a blank unpainted shell. But `bus.register()` must still happen synchronously upfront to block the FSM while the image loads.
+- **Camera shake vs sprite shake.** Camera shake (scene-layer keyframes) is bus-tracked via a fixed 450ms timeout. Sprite shake/bounce/pulse are NOT tracked and do not block reveal (by design).
 
 ---
 
