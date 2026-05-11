@@ -20,6 +20,7 @@
         :candidates="controller.scene.displayedBackground.candidates"
         :alt="controller.scene.displayedBackground.description"
         @resolution-status="controller.diagnostics.onAssetResolutionStatus('__background__', $event)"
+        @swap-start="controller.scene.onBackgroundSwapStart($event)"
       />
     </div>
 
@@ -52,6 +53,7 @@
             :swap-duration-ms="sprite.swapDurationMs"
             @resolved="controller.scene.onSpriteResolved(sprite.id, $event)"
             @resolution-status="controller.diagnostics.onAssetResolutionStatus(sprite.id, $event)"
+            @swap-start="controller.scene.onSpriteSwapStart(sprite.id, $event)"
           />
         </div>
       </TransitionGroup>

@@ -275,6 +275,37 @@ export function useRenpyPlayerController() {
   const characterNaturalHeights = ref<Record<string, number>>({});
   const assetResolutionStatus = ref<Record<string, { resolved?: string; failed: string[] }>>({});
 
+  const activeSwapTrackers = new Map<string, () => void>();
+
+  function onSpriteSwapStart(spriteId: string, { duration }: { duration: number }): void {
+    if (effectsDisabled.value || duration <= 0) return;
+
+    activeSwapTrackers.get(spriteId)?.();
+
+    let timeoutHandle: number | null = null;
+    const cleanup = bus.register(() => {
+      if (timeoutHandle !== null) window.clearTimeout(timeoutHandle);
+    }, `sprite-swap:${spriteId}`);
+
+    timeoutHandle = window.setTimeout(() => {
+      cleanup();
+      activeSwapTrackers.delete(spriteId);
+    }, duration);
+
+    activeSwapTrackers.set(spriteId, cleanup);
+  }
+
+  function onBackgroundSwapStart({ duration }: { duration: number }): void {
+    if (effectsDisabled.value || duration <= 0) return;
+
+    onSpriteSwapStart('__background__', { duration });
+  }
+
+  onScopeDispose(() => {
+    activeSwapTrackers.forEach(cleanup => cleanup());
+    activeSwapTrackers.clear();
+  });
+
   // ─── Playable message state ────────────────────────────────────────────────
 
   const playableMessageIds = ref<number[]>([]);
@@ -1435,6 +1466,8 @@ export function useRenpyPlayerController() {
       setBackgroundCameraElement,
       setSpriteCameraElement,
       trackSpritePositionTransitions,
+      onSpriteSwapStart,
+      onBackgroundSwapStart,
     },
 
     dialogue: {

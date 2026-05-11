@@ -41,6 +41,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   resolved: [payload: SmartImageResolvedPayload];
   resolutionStatus: [status: { resolved: string | null; failed: string[] }];
+  swapStart: [payload: { duration: number }];
 }>();
 
 const currentSrc = ref('');
@@ -49,6 +50,7 @@ const isSwapping = ref(false);
 const loadGeneration = ref(0);
 const swapResetHandle = ref<number | null>(null);
 const failedCandidates = ref<string[]>([]);
+let isComponentUnmounted = false;
 
 const smartImageStyle = computed(() => ({
   '--smart-image-swap-ms': `${Math.max(props.swapDurationMs, 0)}ms`,
@@ -66,7 +68,8 @@ async function syncCurrentSrc(candidates: string[], blockedSrc?: string) {
   const generation = ++loadGeneration.value;
   failedCandidates.value = [];
   const nextSrc = await resolveFirstCandidate(candidates, generation, blockedSrc);
-  if (generation !== loadGeneration.value) {
+  
+  if (isComponentUnmounted || generation !== loadGeneration.value) {
     return;
   }
 
@@ -88,6 +91,11 @@ async function syncCurrentSrc(candidates: string[], blockedSrc?: string) {
   previousSrc.value = currentSrc.value;
   isSwapping.value = previousSrc.value !== '';
   currentSrc.value = nextSrc.src;
+  
+  if (isSwapping.value && props.swapDurationMs > 0) {
+    emit('swapStart', { duration: props.swapDurationMs });
+  }
+  
   scheduleSwapCleanup();
 }
 
@@ -163,6 +171,9 @@ function clearSwapResetHandle() {
 }
 
 onBeforeUnmount(() => {
+  isComponentUnmounted = true;
+  loadGeneration.value++;
+  
   clearSwapResetHandle();
 });
 </script>
