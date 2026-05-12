@@ -390,6 +390,8 @@ export function useScenePresentation(
   const transitionTimeouts = ref<number[]>([]);
   const backgroundCameraElement = ref<HTMLElement | null>(null);
   const spriteCameraElement = ref<HTMLElement | null>(null);
+  const prevBackgroundTransform = ref('none');
+  const prevSpriteTransform = ref('none');
   const activeCameraAnimationTrackers = new WeakMap<HTMLElement, Map<string, () => void>>();
 
   watch(displayedSprites, (_nextSprites, previousSprites) => {
@@ -508,8 +510,8 @@ export function useScenePresentation(
     const bgEl = backgroundCameraElement.value;
     const spriteEl = spriteCameraElement.value;
 
-    const fromBg = bgEl ? getComputedStyle(bgEl).transform : null;
-    const fromSprite = spriteEl ? getComputedStyle(spriteEl).transform : null;
+    const fromBg = bgEl ? prevBackgroundTransform.value : null;
+    const fromSprite = spriteEl ? prevSpriteTransform.value : null;
 
     if (fromBg === null && fromSprite === null) return;
 
@@ -530,8 +532,11 @@ export function useScenePresentation(
       const bgEl2 = backgroundCameraElement.value;
       const spriteEl2 = spriteCameraElement.value;
 
-      const toBg = bgEl2 ? getComputedStyle(bgEl2).transform : null;
-      const toSprite = spriteEl2 ? getComputedStyle(spriteEl2).transform : null;
+      const toBg = bgEl2?.style.transform || 'none';
+      const toSprite = spriteEl2?.style.transform || 'none';
+
+      if (toBg !== 'none') prevBackgroundTransform.value = toBg;
+      if (toSprite !== 'none') prevSpriteTransform.value = toSprite;
 
       const animateLayer = (
         el: HTMLElement,
