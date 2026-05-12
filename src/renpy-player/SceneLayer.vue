@@ -52,10 +52,13 @@
             :style="controller.scene.spriteStyle"
             :candidates="sprite.asset?.candidates ?? []"
             :alt="sprite.asset?.description ?? sprite.id"
+            :enable-mipmaps="true"
+            :mip-target-height-px="sprite.mipTargetHeightPx"
             :swap-duration-ms="sprite.swapDurationMs"
             @resolved="controller.scene.onSpriteResolved(sprite.id, $event)"
             @resolution-status="controller.diagnostics.onAssetResolutionStatus(sprite.id, $event)"
             @swap-start="controller.scene.onSmartImageSwapStart(sprite.id, $event)"
+            @mip-status="controller.diagnostics.onMipStatus(sprite.id, $event)"
           />
         </div>
       </TransitionGroup>

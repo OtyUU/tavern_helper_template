@@ -56,6 +56,18 @@
         </template>
       </ul>
       <p v-if="controller.diagnostics.characterSpriteConfigError"><strong>Character config JSON:</strong> {{ controller.diagnostics.characterSpriteConfigError }}</p>
+      <template v-if="Object.keys(controller.diagnostics.mipStatusMap).length">
+        <p><strong>Mipmap status:</strong></p>
+        <ul style="margin:0; padding-left:1rem; font-size:0.75rem;">
+          <li v-for="(mip, key) in controller.diagnostics.mipStatusMap" :key="key">
+            <strong>{{ key }}</strong>:
+            <span :style="{ color: mip.isMipped ? '#8f8' : '#ff8' }">{{ mip.isMipped ? 'MIPPED' : 'ORIGINAL' }}</span>
+            &mdash; natural {{ mip.naturalHeight }}px &rarr; display {{ mip.targetHeightPx }}px
+            <span v-if="mip.mipHeight != null">(mip {{ mip.mipHeight }}px)</span>
+            <span v-if="mip.cachedKeys.length">[cache: {{ mip.cachedKeys.length }}]</span>
+          </li>
+        </ul>
+      </template>
     </div>
   </details>
 </template>

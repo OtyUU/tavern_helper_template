@@ -930,6 +930,7 @@ export function useRenpyPlayerController() {
     return (displayedSprites.value ?? []).map(sprite => {
       const referenceHeight = getSpriteReferenceHeight(sprite.id);
       const normalizationScale = getSpriteNormalizationScale(sprite);
+      const displayedHeightPx = Math.max(1, Math.round(settings.value.stageHeight * spriteZoom.value * normalizationScale));
 
       return {
         ...sprite,
@@ -941,6 +942,7 @@ export function useRenpyPlayerController() {
           '--sprite-normalize-scale': `${normalizationScale}`,
         },
         swapDurationMs: getSpriteSwapDuration(sprite),
+        mipTargetHeightPx: displayedHeightPx,
       };
     });
   });
@@ -975,6 +977,31 @@ export function useRenpyPlayerController() {
       resolved: status.resolved ?? undefined,
       failed: status.failed,
     };
+  }
+
+  const mipStatusMap = reactive<Record<string, {
+    canonicalSrc: string;
+    displaySrc: string;
+    isMipped: boolean;
+    naturalHeight: number;
+    targetHeightPx: number;
+    mipHeight: number | null;
+    cachedKeys: string[];
+  }>>({});
+
+  function onMipStatus(
+    key: string,
+    payload: {
+      canonicalSrc: string;
+      displaySrc: string;
+      isMipped: boolean;
+      naturalHeight: number;
+      targetHeightPx: number;
+      mipHeight: number | null;
+      cachedKeys: string[];
+    },
+  ) {
+    mipStatusMap[key] = payload;
   }
 
   function getSpriteAnchorXPct(position: SpritePosition): number {
@@ -1618,6 +1645,8 @@ export function useRenpyPlayerController() {
       autoplayStatus,
       currentCursorKey,
       cursorKey,
+      mipStatusMap,
+      onMipStatus,
     },
   });
 }
