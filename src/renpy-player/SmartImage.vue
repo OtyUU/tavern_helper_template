@@ -43,9 +43,9 @@ const props = withDefaults(
     alt: '',
     swapDurationMs: 160,
     enableMipmaps: false,
-    mipOversample: 1,
-    mipMinifyRatio: 2.5,
-    mipLanczosBlur: 1.06,
+    mipOversample: 1.5,
+    mipMinifyRatio: 1.5,
+    mipLanczosBlur: 1.1,
   },
 );
 
@@ -339,30 +339,58 @@ function lanczos3Kernel(x: number, blur: number): number {
   return (Math.sin(px) / px) * (Math.sin(px / 3) / (px / 3));
 }
 
-function lanczosResize(
-  src: Uint8ClampedArray,
+function srgbToLinearPremul(src: Uint8ClampedArray, pixelCount: number): Float32Array {
+  const out = new Float32Array(pixelCount * 4);
+  for (let i = 0; i < pixelCount; i++) {
+    const si = i * 4;
+    const a = src[si + 3] / 255;
+    out[si]     = SRGB_TO_LINEAR[src[si]]     * a;
+    out[si + 1] = SRGB_TO_LINEAR[src[si + 1]] * a;
+    out[si + 2] = SRGB_TO_LINEAR[src[si + 2]] * a;
+    out[si + 3] = a;
+  }
+  return out;
+}
+
+function boxHalfStep(
+  src: Float32Array,
+  srcW: number,
+  srcH: number,
+): { data: Float32Array; width: number; height: number } {
+  const dstW = Math.max(1, srcW >> 1);
+  const dstH = Math.max(1, srcH >> 1);
+  const dst = new Float32Array(dstW * dstH * 4);
+
+  for (let dy = 0; dy < dstH; dy++) {
+    const sy0 = dy * 2;
+    const sy1 = Math.min(sy0 + 1, srcH - 1);
+    for (let dx = 0; dx < dstW; dx++) {
+      const sx0 = dx * 2;
+      const sx1 = Math.min(sx0 + 1, srcW - 1);
+      const i00 = (sy0 * srcW + sx0) * 4;
+      const i10 = (sy0 * srcW + sx1) * 4;
+      const i01 = (sy1 * srcW + sx0) * 4;
+      const i11 = (sy1 * srcW + sx1) * 4;
+      const di = (dy * dstW + dx) * 4;
+      dst[di]     = (src[i00]     + src[i10]     + src[i01]     + src[i11])     * 0.25;
+      dst[di + 1] = (src[i00 + 1] + src[i10 + 1] + src[i01 + 1] + src[i11 + 1]) * 0.25;
+      dst[di + 2] = (src[i00 + 2] + src[i10 + 2] + src[i01 + 2] + src[i11 + 2]) * 0.25;
+      dst[di + 3] = (src[i00 + 3] + src[i10 + 3] + src[i01 + 3] + src[i11 + 3]) * 0.25;
+    }
+  }
+  return { data: dst, width: dstW, height: dstH };
+}
+
+function lanczosResizeLinear(
+  srcF: Float32Array,
   srcW: number,
   srcH: number,
   dstW: number,
   dstH: number,
   blur: number,
 ): Uint8ClampedArray {
-  const pixelCount = srcW * srcH;
-  const srcF = new Float32Array(pixelCount * 4);
-  for (let i = 0; i < pixelCount; i++) {
-    const si = i * 4;
-    const a = src[si + 3] / 255;
-    const rL = SRGB_TO_LINEAR[src[si]];
-    const gL = SRGB_TO_LINEAR[src[si + 1]];
-    const bL = SRGB_TO_LINEAR[src[si + 2]];
-    srcF[si] = rL * a;
-    srcF[si + 1] = gL * a;
-    srcF[si + 2] = bL * a;
-    srcF[si + 3] = a;
-  }
-
   const hRatio = srcW / dstW;
-  const hSupport = Math.ceil(3 * blur * hRatio);
+  const hSupport = Math.ceil(3 * blur * Math.max(1, hRatio));
   const hBuf = new Float32Array(dstW * srcH * 4);
 
   for (let y = 0; y < srcH; y++) {
@@ -374,22 +402,20 @@ function lanczosResize(
       for (let sx = lo; sx <= hi; sx++) {
         const w = lanczos3Kernel((sx - center) / hRatio, blur);
         const si = (y * srcW + sx) * 4;
-        r += srcF[si] * w;
-        g += srcF[si + 1] * w;
-        b += srcF[si + 2] * w;
-        a += srcF[si + 3] * w;
+        r += srcF[si] * w; g += srcF[si + 1] * w;
+        b += srcF[si + 2] * w; a += srcF[si + 3] * w;
         wS += w;
       }
       const di = (y * dstW + dx) * 4;
-      hBuf[di] = r / wS;
-      hBuf[di + 1] = g / wS;
-      hBuf[di + 2] = b / wS;
-      hBuf[di + 3] = a / wS;
+      if (wS !== 0) {
+        hBuf[di] = r / wS; hBuf[di + 1] = g / wS;
+        hBuf[di + 2] = b / wS; hBuf[di + 3] = a / wS;
+      }
     }
   }
 
   const vRatio = srcH / dstH;
-  const vSupport = Math.ceil(3 * blur * vRatio);
+  const vSupport = Math.ceil(3 * blur * Math.max(1, vRatio));
   const dst = new Uint8ClampedArray(dstW * dstH * 4);
 
   for (let dy = 0; dy < dstH; dy++) {
@@ -401,48 +427,21 @@ function lanczosResize(
       for (let sy = lo; sy <= hi; sy++) {
         const w = lanczos3Kernel((sy - center) / vRatio, blur);
         const si = (sy * dstW + dx) * 4;
-        r += hBuf[si] * w;
-        g += hBuf[si + 1] * w;
-        b += hBuf[si + 2] * w;
-        a += hBuf[si + 3] * w;
+        r += hBuf[si] * w; g += hBuf[si + 1] * w;
+        b += hBuf[si + 2] * w; a += hBuf[si + 3] * w;
         wS += w;
       }
       const di = (dy * dstW + dx) * 4;
-      const aOut = a / wS;
-      const aClamp = Math.min(1, Math.max(0, aOut));
-      dst[di + 3] = Math.max(0, Math.min(255, Math.round(aClamp * 255)));
-      if (aClamp > 0) {
-        dst[di] = linearToSrgb8((r / wS) / aClamp);
-        dst[di + 1] = linearToSrgb8((g / wS) / aClamp);
-        dst[di + 2] = linearToSrgb8((b / wS) / aClamp);
-      } else {
-        dst[di] = 0;
-        dst[di + 1] = 0;
-        dst[di + 2] = 0;
+      const aOut = wS !== 0 ? Math.min(1, Math.max(0, a / wS)) : 0;
+      dst[di + 3] = Math.round(aOut * 255);
+      if (aOut > 1e-6) {
+        dst[di]     = linearToSrgb8((r / wS) / aOut);
+        dst[di + 1] = linearToSrgb8((g / wS) / aOut);
+        dst[di + 2] = linearToSrgb8((b / wS) / aOut);
       }
     }
   }
-
   return dst;
-}
-
-function canvasBilinearStep(
-  srcCanvas: HTMLCanvasElement,
-  srcW: number,
-  srcH: number,
-  dstW: number,
-  dstH: number,
-): HTMLCanvasElement | null {
-  const c = document.createElement('canvas');
-  c.width = dstW;
-  c.height = dstH;
-  const ctx = c.getContext('2d');
-  if (!ctx) return null;
-  ctx.imageSmoothingEnabled = true;
-  // @ts-expect-error older TS libs may not include imageSmoothingQuality
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(srcCanvas, 0, 0, srcW, srcH, 0, 0, dstW, dstH);
-  return c;
 }
 
 async function generateMipBlobUrlFromImage(img: HTMLImageElement, targetHeight: number): Promise<string | null> {
@@ -453,61 +452,53 @@ async function generateMipBlobUrlFromImage(img: HTMLImageElement, targetHeight: 
   const targetH = clampNumber(Math.round(targetHeight), 1, srcH);
   const targetW = clampNumber(Math.round(srcW * (targetH / srcH)), 1, srcW);
 
-  let curCanvas = document.createElement('canvas');
-  curCanvas.width = srcW;
-  curCanvas.height = srcH;
-  const initCtx = curCanvas.getContext('2d');
+  const initCanvas = document.createElement('canvas');
+  initCanvas.width = srcW;
+  initCanvas.height = srcH;
+  const initCtx = initCanvas.getContext('2d');
   if (!initCtx) return null;
-
-  initCtx.imageSmoothingEnabled = true;
-  // @ts-expect-error older TS libs may not include imageSmoothingQuality
-  initCtx.imageSmoothingQuality = 'high';
   initCtx.drawImage(img, 0, 0, srcW, srcH);
+  const imageData = initCtx.getImageData(0, 0, srcW, srcH);
 
+  let curF = srgbToLinearPremul(imageData.data, srcW * srcH);
   let curW = srcW;
   let curH = srcH;
 
-  while (curH > targetH * 2) {
-    const nextW = Math.max(1, Math.round(curW / 2));
-    const nextH = Math.max(1, Math.round(curH / 2));
-    const next = canvasBilinearStep(curCanvas, curW, curH, nextW, nextH);
-    if (!next) break;
-    curCanvas = next;
-    curW = nextW;
-    curH = nextH;
+  while (curH > targetH * 2 && curW > 1 && curH > 1) {
+    const next = boxHalfStep(curF, curW, curH);
+    curF = next.data;
+    curW = next.width;
+    curH = next.height;
   }
 
-  if (curW !== targetW || curH !== targetH) {
-    try {
-      const ctx = curCanvas.getContext('2d');
-      if (!ctx) throw new Error('no ctx');
-      const imageData = ctx.getImageData(0, 0, curW, curH);
-      const resized = lanczosResize(imageData.data, curW, curH, targetW, targetH, props.mipLanczosBlur ?? 1.06);
-      const outCanvas = document.createElement('canvas');
-      outCanvas.width = targetW;
-      outCanvas.height = targetH;
-      const outCtx = outCanvas.getContext('2d');
-      if (!outCtx) return null;
-      outCtx.putImageData(new ImageData(resized, targetW, targetH), 0, 0);
-      curCanvas = outCanvas;
-    } catch {
-      const fallback = canvasBilinearStep(curCanvas, curW, curH, targetW, targetH);
-      if (!fallback) return null;
-      curCanvas = fallback;
+  let resized: Uint8ClampedArray;
+  if (curW === targetW && curH === targetH) {
+    resized = new Uint8ClampedArray(targetW * targetH * 4);
+    for (let i = 0; i < targetW * targetH; i++) {
+      const si = i * 4;
+      const a = Math.min(1, Math.max(0, curF[si + 3]));
+      resized[si + 3] = Math.round(a * 255);
+      if (a > 1e-6) {
+        resized[si]     = linearToSrgb8(curF[si] / a);
+        resized[si + 1] = linearToSrgb8(curF[si + 1] / a);
+        resized[si + 2] = linearToSrgb8(curF[si + 2] / a);
+      }
     }
+  } else {
+    resized = lanczosResizeLinear(curF, curW, curH, targetW, targetH, props.mipLanczosBlur ?? 1.1);
   }
+
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = targetW;
+  outCanvas.height = targetH;
+  const outCtx = outCanvas.getContext('2d');
+  if (!outCtx) return null;
+  outCtx.putImageData(new ImageData(resized, targetW, targetH), 0, 0);
 
   const blob = await new Promise<Blob | null>(resolve => {
-    try {
-      curCanvas.toBlob(
-        b => resolve(b),
-        'image/png',
-      );
-    } catch {
-      resolve(null);
-    }
+    try { outCanvas.toBlob(b => resolve(b), 'image/png'); }
+    catch { resolve(null); }
   });
-
   if (!blob) return null;
   return URL.createObjectURL(blob);
 }
