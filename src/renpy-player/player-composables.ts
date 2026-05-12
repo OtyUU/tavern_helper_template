@@ -1,7 +1,7 @@
 import type { Ref } from 'vue';
-import { ref, watch, nextTick } from 'vue';
-import type { PlayerAsset, PlayerFrame } from './types';
+import { nextTick, ref, watch } from 'vue';
 import { normalizeCameraFromFrame } from './camera-utils';
+import type { PlayerAsset, PlayerFrame } from './types';
 
 type SpriteVisibilityEffect = 'fade' | 'none';
 
@@ -237,29 +237,31 @@ export function useSpriteVisibilityTransitions(
       complete();
     });
 
-    requestAnimationFrame(() => {
-      if (finished) return;
-      try {
-        const animation = node.animate(
-          [{ opacity: 1 }, { opacity: 0 }],
-          { duration, easing: 'ease-out', fill: 'forwards' },
-        );
-        spriteVisibilityAnimations.set(node, animation);
-        activeSpriteVisibilityAnimations.add(animation);
-        
-        animation.addEventListener('finish', () => {
-          cleanupBus();
-          complete();
-        }, { once: true });
-        animation.addEventListener('cancel', () => {
-          cleanupBus();
-          complete();
-        }, { once: true });
-      } catch {
+    // Execute synchronously without requestAnimationFrame (Firefox fix)
+    if (finished) return;
+    
+    try {
+      const animation = node.animate(
+        [{ opacity: 1 }, { opacity: 0 }],
+        { duration, easing: 'ease-out', fill: 'forwards' },
+      );
+      spriteVisibilityAnimations.set(node, animation);
+      activeSpriteVisibilityAnimations.add(animation);
+      
+      animation.addEventListener('finish', () => {
         cleanupBus();
         complete();
-      }
-    });
+      }, { once: true });
+      
+      animation.addEventListener('cancel', () => {
+        cleanupBus();
+        complete();
+      }, { once: true });
+      
+    } catch (err) {
+      cleanupBus();
+      complete();
+    }
   }
 
   function clearSpriteVisibilityTransitions() {
