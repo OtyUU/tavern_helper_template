@@ -845,33 +845,26 @@ export function useRenpyPlayerController() {
     return 1.0 + (baseZoom - 1.0) * parallaxFactor;
   });
 
+  // Used for WAAPI duration + will-change toggling (not CSS transition).
   const resolvedCameraTransitionMs = computed(() =>
     (effectsDisabled.value || isSceneTransitioning.value) ? 0 : settings.value.cameraTransitionMs,
   );
 
+  // Camera motion is animated via WAAPI in useScenePresentation (imperative).
   const backgroundCameraStyle = computed(() => {
     const panXMult = settings.value.bgPanParallax ?? 1;
     const panYMult = settings.value.bgPanParallaxY ?? 0.7;
-    const ms = resolvedCameraTransitionMs.value;
-    
-    // Use translate3d for better GPU acceleration and reduced jitter in Firefox
-    // Use linear easing - ease curve causes jitter in Firefox
     return {
       transform: `scale(${backgroundZoom.value}) translate3d(${cameraPanXPx.value * panXMult}px, ${cameraPanYPx.value * panYMult}px, 0)`,
       transformOrigin: 'center center',
-      transition: ms > 0 ? `transform ${ms}ms linear` : 'none',
     };
   });
 
+  // Camera motion is animated via WAAPI in useScenePresentation (imperative).
   const spriteCameraStyle = computed(() => {
-    const ms = resolvedCameraTransitionMs.value;
-    
-    // Use translate3d for better GPU acceleration and reduced jitter in Firefox
-    // Use linear easing - ease curve causes jitter in Firefox
     return {
       transform: `scale(${spriteZoom.value}) translate3d(${cameraPanXPx.value}px, ${cameraPanYPx.value}px, 0)`,
       transformOrigin: 'center center',
-      transition: ms > 0 ? `transform ${ms}ms linear` : 'none',
     };
   });
 

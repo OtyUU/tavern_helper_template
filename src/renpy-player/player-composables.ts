@@ -390,10 +390,16 @@ export function useScenePresentation(
   const transitionTimeouts = ref<number[]>([]);
   const backgroundCameraElement = ref<HTMLElement | null>(null);
   const spriteCameraElement = ref<HTMLElement | null>(null);
-  const activeCssTransitionTrackers = new WeakMap<HTMLElement, Map<string, () => void>>();
+  const activeCameraAnimationTrackers = new WeakMap<HTMLElement, Map<string, () => void>>();
 
   watch(displayedSprites, (_nextSprites, previousSprites) => {
     previousDisplayedSprites.value = previousSprites ?? [];
+  });
+
+  watch([() => prefersReducedMotion.value, () => effectsDisabled.value], (reducedOrDisabled) => {
+    if (!reducedOrDisabled) return;
+    activeCameraAnimationTrackers.get(backgroundCameraElement.value!)?.get('transform')?.();
+    activeCameraAnimationTrackers.get(spriteCameraElement.value!)?.get('transform')?.();
   });
 
   function clearTransitionTimeouts() {
@@ -491,46 +497,158 @@ export function useScenePresentation(
 
     applyDisplayedFrame(next);
     
-    // Track camera transform CSS transitions
-    trackCameraTransformTransition(next, prev);
+    trackCameraTransformTransition();
   }
   
-  /** Track camera transform CSS transitions via TransitionBus. */
-  function trackCameraTransformTransition(next: PlayerFrame, prev: PlayerFrame): void {
-    // Skip if effects disabled or reduced motion
-    if (effectsDisabled.value || prefersReducedMotion.value) {
-      return;
-    }
-    
-    const nextPreset = normalizeCameraFromFrame(next).preset;
-    const prevPreset = normalizeCameraFromFrame(prev).preset;
-    if (nextPreset === prevPreset) {
-      return;
-    }
-    
-    if (cameraTransitionMs.value <= 0) {
-      return;
-    }
-    
-    if (backgroundCameraElement.value) {
-      trackCssTransition(
-        backgroundCameraElement.value,
-        'transform',
-        cameraTransitionMs.value,
-        'camera transform (bg layer)',
-      );
+  function trackCameraTransformTransition(): void {
+    if (effectsDisabled.value) return;
+    if (prefersReducedMotion.value) return;
+    if (cameraTransitionMs.value <= 0) return;
+
+    const bgEl = backgroundCameraElement.value;
+    const spriteEl = spriteCameraElement.value;
+
+    const fromBg = bgEl ? getComputedStyle(bgEl).transform : null;
+    const fromSprite = spriteEl ? getComputedStyle(spriteEl).transform : null;
+
+    if (fromBg === null && fromSprite === null) return;
+
+    let finished = false;
+    const unlockPrelim = bus.register(() => { finished = true; });
+
+    nextTick(() => {
+      if (finished) {
+        unlockPrelim();
+        return;
+      }
+
+      if (effectsDisabled.value || prefersReducedMotion.value || cameraTransitionMs.value <= 0) {
+        unlockPrelim();
+        return;
+      }
+
+      const bgEl2 = backgroundCameraElement.value;
+      const spriteEl2 = spriteCameraElement.value;
+
+      const toBg = bgEl2 ? getComputedStyle(bgEl2).transform : null;
+      const toSprite = spriteEl2 ? getComputedStyle(spriteEl2).transform : null;
+
+      const animateLayer = (
+        el: HTMLElement,
+        from: string,
+        to: string,
+      ) => {
+        if (from === to) return;
+
+        let waapiCleanup: (() => void) | null = null;
+
+        const cancel = () => { waapiCleanup?.(); };
+        const deregister = bus.register(cancel);
+
+        waapiCleanup = animateCameraLayerWAAPI(el, from, to, cameraTransitionMs.value, () => {
+          deregister();
+        });
+      };
+
+      if (bgEl2 && fromBg !== null && toBg !== null) {
+        animateLayer(bgEl2, fromBg, toBg);
+      }
+
+      if (spriteEl2 && fromSprite !== null && toSprite !== null) {
+        animateLayer(spriteEl2, fromSprite, toSprite);
+      }
+
+      unlockPrelim();
+    });
+  }
+  
+  /**
+   * Animate a camera layer element from one CSS transform to another using the
+   * Web Animations API (WAAPI).
+   *
+   * Preconditions:
+   *   - `element` is mounted in the DOM.
+   *   - `fromTransform` and `toTransform` are valid CSS `transform` values
+   *     (e.g. `"translate(10px, 20px) scale(1.5)"`).
+   *   - `durationMs` > 0 (caller should short-circuit for ≤ 0).
+   *
+   * Postconditions:
+   *   - If `fromTransform === toTransform` or `durationMs <= 0`, `onDone` is
+   *     called synchronously and no animation is created.
+   *   - Otherwise a WAAPI animation is created with `ease` easing and
+   *     `fill: 'none'` so Vue retains ownership of the inline `style.transform`.
+   *   - Any previous animation tracked on the same element for `'transform'` is
+   *     cancelled before the new one starts.
+   *   - `onDone` is called exactly once: on finish, cancel, early-return, or
+   *     fallback timeout.
+   *   - Returns a cleanup/cancel function for the caller to register with the
+   *     TransitionBus.
+   */
+  function animateCameraLayerWAAPI(
+    element: HTMLElement,
+    fromTransform: string,
+    toTransform: string,
+    durationMs: number,
+    onDone?: () => void,
+  ): () => void {
+    if (durationMs <= 0) {
+      onDone?.();
+      return () => {};
     }
 
-    if (spriteCameraElement.value) {
-      trackCssTransition(
-        spriteCameraElement.value,
-        'transform',
-        cameraTransitionMs.value,
-        'camera transform (sprite layer)',
-      );
+    if (fromTransform === toTransform) {
+      onDone?.();
+      return () => {};
     }
+
+    let perProp = activeCameraAnimationTrackers.get(element);
+    if (!perProp) {
+      perProp = new Map<string, () => void>();
+      activeCameraAnimationTrackers.set(element, perProp);
+    }
+
+    perProp.get('transform')?.();
+
+    const animation = element.animate(
+      [{ transform: fromTransform }, { transform: toTransform }],
+      { duration: durationMs, easing: 'ease', fill: 'none' },
+    );
+
+    let finished = false;
+    let fallbackHandle: number | null = null;
+
+    const cleanup = () => {
+      if (finished) return;
+      finished = true;
+
+      if (fallbackHandle !== null) {
+        window.clearTimeout(fallbackHandle);
+        fallbackHandle = null;
+      }
+
+      animation.cancel();
+
+      const current = perProp?.get('transform');
+      if (current === cleanup) {
+        perProp?.delete('transform');
+        if (perProp && perProp.size === 0) {
+          activeCameraAnimationTrackers.delete(element);
+        }
+      }
+
+      onDone?.();
+    };
+
+    perProp.set('transform', cleanup);
+
+    animation.addEventListener('finish', cleanup);
+    animation.addEventListener('cancel', cleanup);
+
+    fallbackHandle = window.setTimeout(cleanup, durationMs + 50);
+
+    return cleanup;
   }
-  
+
   function trackCssTransition(
     element: HTMLElement,
     propertyName: string,
@@ -541,10 +659,10 @@ export function useScenePresentation(
       return;
     }
 
-    let perProp = activeCssTransitionTrackers.get(element);
+    let perProp = activeCameraAnimationTrackers.get(element);
     if (!perProp) {
       perProp = new Map<string, () => void>();
-      activeCssTransitionTrackers.set(element, perProp);
+      activeCameraAnimationTrackers.set(element, perProp);
     }
 
     perProp.get(propertyName)?.();
@@ -574,7 +692,7 @@ export function useScenePresentation(
       if (current === complete) {
         perProp?.delete(propertyName);
         if (perProp && perProp.size === 0) {
-          activeCssTransitionTrackers.delete(element);
+          activeCameraAnimationTrackers.delete(element);
         }
       }
     };
