@@ -614,7 +614,7 @@ export function useScenePresentation(
     spriteCameraElement.value = element;
   }
   
-  /** Track CSS left transitions on sprites whose position changed. */
+  /** Track CSS transform transitions on sprites whose position changed. */
   function trackSpritePositionTransitions(spriteShells: HTMLElement[]): void {
     // Skip if effects disabled or reduced motion
     if (effectsDisabled.value || prefersReducedMotion.value) {
