@@ -1,19 +1,19 @@
 import type {
-  CameraAnimation,
-  CameraTransform,
-  CameraPreset,
-  CharacterSpriteConfig,
-  FrameBuildOptions,
-  InitialPlayerState,
-  ParsedScript,
-  PlayerAsset,
-  PlayerCameraIntent,
-  PlayerFrame,
-  SceneCommand,
-  ScriptCommand,
-  ShowCommand,
-  SpritePosition,
-  SpriteState
+    CameraAnimation,
+    CameraPreset,
+    CameraTransform,
+    CharacterSpriteConfig,
+    FrameBuildOptions,
+    InitialPlayerState,
+    ParsedScript,
+    PlayerAsset,
+    PlayerCameraIntent,
+    PlayerFrame,
+    SceneCommand,
+    ScriptCommand,
+    ShowCommand,
+    SpritePosition,
+    SpriteState
 } from './types';
 
 type ParsedLines = Pick<ParsedScript, 'commands' | 'ignoredLines'>;
@@ -224,7 +224,7 @@ function categorizeShowTransforms(transforms: string[]): {
   const spriteAnimations: string[] = [];
   for (const t of transforms) {
     const lower = t.trim().toLowerCase();
-    if (SPRITE_POSITIONS.has(lower)) {
+    if (SPRITE_POSITIONS.has(lower as SpritePosition)) {
       spritePosition = lower as SpritePosition;
     } else if (SPRITE_TRANSFORMS.has(lower)) {
       spriteAnimations.push(lower);
@@ -250,7 +250,7 @@ function parseLines(source: string): ParsedLines {
       const line = stripInlineComment(original).trim();
       if (!line) return;
 
-      const sceneMatch = line.match(/^scene\s+([A-Za-z0-9_-]+)(?:\s+([A-Za-z0-9_-]+))?$/i);
+      const sceneMatch = line.match(/^scene(?:\s+([A-Za-z0-9_-]+)(?:\s+([A-Za-z0-9_-]+))?)?$/i);
       if (sceneMatch) {
         commands.push({
           type: 'scene',
@@ -414,6 +414,8 @@ export function parseScriptFromMessage(message: string): ParsedScript {
 // ─── Background asset ────────────────────────────────────────────────────────
 
 function createBackgroundAsset(command: SceneCommand, options: FrameBuildOptions): PlayerAsset | undefined {
+  if (!command.background) return undefined;
+  
   const root = joinPath(trimTrailingSlash(options.assetRoot), 'bg');
   const name = command.background.toLowerCase();
   const segment = command.segment?.toLowerCase();
@@ -596,7 +598,7 @@ class StageState {
   private spriteOrder: string[];
   private rememberedOutfits: Record<string, string>;
 
-  constructor(options: FrameBuildOptions, initial?: InitialPlayerState) {
+  constructor(_options: FrameBuildOptions, initial?: InitialPlayerState) {
     if (initial) {
       this.background = initial.background;
       this.backgroundName = initial.backgroundName ?? '';
@@ -629,13 +631,23 @@ class StageState {
   apply(cmd: ScriptCommand, options: FrameBuildOptions): void {
     switch (cmd.type) {
       case 'scene': {
-        const bg = cmd.background;
-        const seg = cmd.segment ?? this.backgroundSegment;
-        this.backgroundName = bg;
-        this.backgroundSegment = seg;
-        this.background = createBackgroundAsset({ ...cmd, background: bg, segment: seg }, options);
+        // Reset camera to default
+        this.camera = { preset: 'default' };
+        this.pendingCameraAnimations = [];
+        
+        // Clear all sprites
         for (const id of Object.keys(this.sprites)) delete this.sprites[id];
         this.spriteOrder.length = 0;
+        
+        // Update background only if specified
+        if (cmd.background) {
+          const bg = cmd.background;
+          const seg = cmd.segment ?? this.backgroundSegment;
+          this.backgroundName = bg;
+          this.backgroundSegment = seg;
+          this.background = createBackgroundAsset({ ...cmd, background: bg, segment: seg }, options);
+        }
+        
         return;
       }
 
@@ -686,6 +698,9 @@ class StageState {
         this.spriteOrder.push(id);
 
         this.sprites[id] = newState;
+        if (newState.outfit) {
+          this.rememberedOutfits[id] = newState.outfit;
+        }
         return;
       }
 

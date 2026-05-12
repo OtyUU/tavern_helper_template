@@ -44,7 +44,8 @@ export type CameraCommand = {
 export type SceneCommand = {
   type: 'scene';
   raw: string;
-  background: string;
+  /** Optional background name. If omitted, keeps current background. */
+  background?: string;
   /** Optional day/time segment (e.g., "day", "night") */
   segment?: string;
 };
