@@ -664,7 +664,7 @@ export function useRenpyPlayerController() {
       settings.value.closeupSpriteScale,
       1,
     );
-    return Math.round(settings.value.stageHeight * maxZoom * 1.25);
+    return Math.round(settings.value.stageHeight * maxZoom);
   });
 
   function clampNumber(value: number, min: number, max: number): number {

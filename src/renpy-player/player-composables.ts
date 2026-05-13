@@ -450,17 +450,20 @@ export function useScenePresentation(
 
     if (!prev || next.index === prev.index) {
       applyDisplayedFrame(next);
+      trackCameraTransformTransition({ syncOnly: true });
       return;
     }
 
     if (effectsDisabled.value) {
       applyDisplayedFrame(next);
+      trackCameraTransformTransition({ syncOnly: true });
       return;
     }
 
     if (next.isNewScene) {
       if (settings.value.sceneTransitionMs <= 0) {
         applyDisplayedFrame(next);
+        trackCameraTransformTransition({ syncOnly: true });
         return;
       }
 
@@ -473,6 +476,7 @@ export function useScenePresentation(
         displayedBackground.value = next.background;
         displayedCamera.value = normalizeCameraFromFrame(next);
         updateDisplayedSprites([]);
+        trackCameraTransformTransition({ syncOnly: true });
       }, halfDuration);
 
       let unregister: (() => void) | null = null;
@@ -480,6 +484,7 @@ export function useScenePresentation(
         updateDisplayedSprites(next.sprites ?? []);
         displayedCameraAnimations.value = next.cameraAnimations;
         isSceneTransitioning.value = false;
+        trackCameraTransformTransition({ syncOnly: true });
         transitionTimeouts.value = [];
         unregister?.();
         unregister = null;
@@ -491,6 +496,8 @@ export function useScenePresentation(
         window.clearTimeout(midpointHandle);
         window.clearTimeout(finalHandle);
         transitionTimeouts.value = [];
+        applyDisplayedFrame(next);
+        trackCameraTransformTransition({ syncOnly: true });
         isSceneTransitioning.value = false;
       });
       
@@ -499,16 +506,31 @@ export function useScenePresentation(
 
     applyDisplayedFrame(next);
     
+    // For standard frames, attempt to animate the camera if it changed.
+    // The tracker will automatically fall back to sync-only if effects are disabled.
     trackCameraTransformTransition();
   }
-  
-  function trackCameraTransformTransition(): void {
-    if (effectsDisabled.value) return;
-    if (prefersReducedMotion.value) return;
-    if (cameraTransitionMs.value <= 0) return;
 
+  function trackCameraTransformTransition(options: { syncOnly?: boolean } = {}): void {
     const bgEl = backgroundCameraElement.value;
     const spriteEl = spriteCameraElement.value;
+
+    const skipAnimation = 
+      options.syncOnly || 
+      effectsDisabled.value || 
+      prefersReducedMotion.value || 
+      cameraTransitionMs.value <= 0;
+
+    if (skipAnimation) {
+      nextTick(() => {
+        const toBg = backgroundCameraElement.value?.style.transform || 'none';
+        const toSprite = spriteCameraElement.value?.style.transform || 'none';
+        
+        if (backgroundCameraElement.value) prevBackgroundTransform.value = toBg;
+        if (spriteCameraElement.value) prevSpriteTransform.value = toSprite;
+      });
+      return;
+    }
 
     const fromBg = bgEl ? prevBackgroundTransform.value : null;
     const fromSprite = spriteEl ? prevSpriteTransform.value : null;
@@ -535,8 +557,8 @@ export function useScenePresentation(
       const toBg = bgEl2?.style.transform || 'none';
       const toSprite = spriteEl2?.style.transform || 'none';
 
-      if (toBg !== 'none') prevBackgroundTransform.value = toBg;
-      if (toSprite !== 'none') prevSpriteTransform.value = toSprite;
+      if (bgEl2) prevBackgroundTransform.value = toBg;
+      if (spriteEl2) prevSpriteTransform.value = toSprite;
 
       const animateLayer = (
         el: HTMLElement,
