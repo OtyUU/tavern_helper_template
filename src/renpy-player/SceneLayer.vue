@@ -20,6 +20,7 @@
         class="renpy-player__background"
         :candidates="controller.scene.displayedBackground.candidates"
         :alt="controller.scene.displayedBackground.description"
+        :resample-target-height="controller.scene.spriteResampleTargetHeight"
         @resolution-status="controller.diagnostics.onAssetResolutionStatus('__background__', $event)"
         @swap-start="controller.scene.onSmartImageSwapStart('__background__', $event)"
       />
@@ -53,6 +54,7 @@
             :candidates="sprite.asset?.candidates ?? []"
             :alt="sprite.asset?.description ?? sprite.id"
             :swap-duration-ms="sprite.swapDurationMs"
+            :resample-target-height="controller.scene.spriteResampleTargetHeight"
             @resolved="controller.scene.onSpriteResolved(sprite.id, $event)"
             @resolution-status="controller.diagnostics.onAssetResolutionStatus(sprite.id, $event)"
             @swap-start="controller.scene.onSmartImageSwapStart(sprite.id, $event)"
@@ -79,23 +81,11 @@ onMounted(() => {
   controller.scene.setSpriteCameraElement(spriteCameraRef.value);
 });
 
-/**
- * Track sprite position transitions (horizontal movement via CSS transform).
- * 
- * Fires when renderedSprites change (add/remove/reorder/position).
- * trackSpritePositionTransitions() internally filters to only track sprites
- * whose position actually changed (compares displayedSprites vs previousDisplayedSprites).
- * 
- * flush: 'post' ensures:
- * - DOM has been patched (spriteShellRefs are up-to-date)
- * - Runs before nextTick (before DOM lock unlock in applyFrame)
- * So bus entries are registered before phase FSM can advance.
- */
 watch(
   () => controller.scene.renderedSprites.map(s => `${s.id}:${s.position}`).join('|'),
   (signature, prevSignature) => {
-    if (!prevSignature) return; // Skip initial run
-    if (signature === prevSignature) return; // No change
+    if (!prevSignature) return;
+    if (signature === prevSignature) return;
     controller.scene.trackSpritePositionTransitions(spriteShellRefs.value);
   },
   { flush: 'post' }
