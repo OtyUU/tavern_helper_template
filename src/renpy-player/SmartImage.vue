@@ -107,7 +107,7 @@ async function createSourceCanvas(img: HTMLImageElement): Promise<HTMLCanvasElem
   const src = document.createElement('canvas');
   src.width = img.naturalWidth;
   src.height = img.naturalHeight;
-  const ctx = src.getContext('2d');
+  const ctx = src.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new Error('SmartImage: cannot get 2d context for pica source');
   ctx.drawImage(img, 0, 0);
   return src;
@@ -115,7 +115,7 @@ async function createSourceCanvas(img: HTMLImageElement): Promise<HTMLCanvasElem
 
 /**
  * Ресемплирует img до targetHeight с сохранением aspect ratio через Pica Lanczos3.
- * Возвращает blob: URL с результатом в WebP (fallback PNG).
+ * Возвращает blob: URL с результатом в PNG (lossless — без re-encoding artifacts).
  *
  * Caller обязан зарегистрировать результат через registerBlobUrl().
  */
@@ -135,18 +135,15 @@ async function picaResample(
 
   await picaInstance.resize(srcCanvas, dst, {
     quality: 3,
+    unsharpAmount: 100,
+    unsharpRadius: 0.6,
+    unsharpThreshold: 4,
   });
-
-  // Предпочитаем WebP — меньше памяти, lossless через quality=1
-  const supportsWebP = dst.toDataURL('image/webp').startsWith('data:image/webp');
-  const mimeType = supportsWebP ? 'image/webp' : 'image/png';
-  const quality = supportsWebP ? 0.93 : undefined;
 
   const blob = await new Promise<Blob>((resolve, reject) => {
     dst.toBlob(
       b => b ? resolve(b) : reject(new Error('SmartImage: toBlob returned null')),
-      mimeType,
-      quality,
+      'image/png',
     );
   });
 
@@ -281,8 +278,8 @@ async function preloadCandidate(
     registerBlobUrl(resampled.blobUrl);
     return {
       src: resampled.blobUrl,
-      naturalWidth: resampled.width,
-      naturalHeight: resampled.height,
+      naturalWidth,
+      naturalHeight,
     };
   } catch (err) {
     console.warn('[RenPy Player] SmartImage: pica resampling failed, using original.', err);

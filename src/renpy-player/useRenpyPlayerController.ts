@@ -657,9 +657,15 @@ export function useRenpyPlayerController() {
    * 2× от stageHeight даёт запас под zoom до 2x без aliasing.
    * SmartImage применяет ресемплинг только если naturalHeight > resampleTargetHeight * 1.5.
    */
-  const spriteResampleTargetHeight = computed(
-    () => Math.round(settings.value.stageHeight * 2),
-  );
+  const spriteResampleTargetHeight = computed(() => {
+    const maxZoom = Math.max(
+      settings.value.defaultSpriteScale,
+      settings.value.mediumSpriteScale,
+      settings.value.closeupSpriteScale,
+      1,
+    );
+    return Math.round(settings.value.stageHeight * maxZoom * 1.25);
+  });
 
   function clampNumber(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value));
