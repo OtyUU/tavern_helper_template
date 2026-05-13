@@ -654,7 +654,7 @@ export function useRenpyPlayerController() {
 
   /**
    * Целевая высота для Pica Lanczos3 downsampling спрайтов.
-   * 2× от stageHeight даёт запас под zoom до 2x без aliasing.
+   * stageHeight × maxZoom × 1.25 — запас под zoom + 25% на качество.
    * SmartImage применяет ресемплинг только если naturalHeight > resampleTargetHeight * 1.5.
    */
   const spriteResampleTargetHeight = computed(() => {
@@ -664,7 +664,7 @@ export function useRenpyPlayerController() {
       settings.value.closeupSpriteScale,
       1,
     );
-    return Math.round(settings.value.stageHeight * maxZoom);
+    return Math.round(settings.value.stageHeight * maxZoom * 1.25);
   });
 
   function clampNumber(value: number, min: number, max: number): number {
@@ -1050,27 +1050,36 @@ export function useRenpyPlayerController() {
     animationDuration: `${settings.value.sceneTransitionMs}ms`,
   }));
 
+  let lastAppliedFrameKey = '';
+
   watch(
     () => currentFrame.value,
     (nextFrame, previousFrame) => {
-      const bridge = pendingBridge.value;
       const nextKey =
         nextFrame && activeMessageId.value != null
           ? cursorKey(activeMessageId.value, nextFrame.index)
           : '';
 
-      const effectivePrev =
-        bridge && bridge.targetKey === nextKey
-          ? bridge.prevFrame
-          : (previousFrame ?? null);
+      const bridge = pendingBridge.value;
+      const isBridged = bridge && bridge.targetKey === nextKey;
 
-      if (bridge && bridge.targetKey === nextKey) {
+      const effectivePrev = isBridged
+        ? bridge.prevFrame
+        : (previousFrame ?? null);
+
+      if (isBridged) {
         pendingBridge.value = null;
       }
 
       prevFrameForDiff.value = nextFrame ? effectivePrev : null;
 
-      if (nextFrame !== previousFrame) {
+      const isActuallyNewFrame = nextKey !== lastAppliedFrameKey;
+      const textChanged = nextFrame?.text !== previousFrame?.text;
+      const isNewScene = nextFrame?.isNewScene;
+      
+      lastAppliedFrameKey = nextKey;
+
+      if (isActuallyNewFrame || textChanged || isNewScene) {
         resetToScene('currentFrame changed');
         clearReveal();
         cancelHudShow();
