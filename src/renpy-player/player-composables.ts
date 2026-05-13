@@ -425,8 +425,27 @@ export function useScenePresentation(
   }
 
   function applyDisplayedFrame(frame: PlayerFrame) {
-    displayedBackground.value = frame.background;
-    displayedCamera.value = normalizeCameraFromFrame(frame);
+    const nextBg = frame.background;
+    const currBg = displayedBackground.value;
+    const bgChanged = 
+      nextBg?.description !== currBg?.description ||
+      nextBg?.candidates?.join('|') !== currBg?.candidates?.join('|');
+
+    if (bgChanged) {
+      displayedBackground.value = nextBg;
+    }
+
+    const nextCam = normalizeCameraFromFrame(frame);
+    const currCam = displayedCamera.value;
+    const camChanged = 
+      nextCam.preset !== currCam?.preset ||
+      nextCam.panXPct !== currCam?.panXPct ||
+      nextCam.panYPct !== currCam?.panYPct;
+    
+    if (camChanged) {
+      displayedCamera.value = nextCam;
+    }
+
     displayedCameraAnimations.value = frame.cameraAnimations;
     updateDisplayedSprites(frame.sprites ?? []);
     isSceneTransitioning.value = false;
@@ -435,13 +454,6 @@ export function useScenePresentation(
   function applyFrame(next: PlayerFrame | null, prev: PlayerFrame | null): void {
     clearTransitionTimeouts();
 
-    // Lock the bus temporarily to prevent the phase FSM from advancing before Vue updates the DOM.
-    // TransitionGroup hooks (onSpriteEnter/Leave) fire synchronously during DOM patch.
-    // By the time nextTick executes, those hooks will have registered their actual animations.
-    const unlockDomUpdate = bus.register(() => {});
-    nextTick(() => {
-      unlockDomUpdate();
-    });
 
     if (!next) {
       resetDisplayedState();

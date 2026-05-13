@@ -157,9 +157,14 @@ const smartImageStyle = computed(() => ({
   '--smart-image-swap-ms': `${Math.max(props.swapDurationMs, 0)}ms`,
 }));
 
+let lastCandidatesSignature = '';
+
 watch(
-  () => [...props.candidates],
+  () => props.candidates,
   candidates => {
+    const signature = candidates.join('|');
+    if (signature === lastCandidatesSignature) return;
+    lastCandidatesSignature = signature;
     void syncCurrentSrc(candidates);
   },
   { immediate: true },

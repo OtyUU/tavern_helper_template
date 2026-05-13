@@ -390,7 +390,7 @@
             </div>
 
             <div class="renpy-player-settings__field">
-              <label>Auto-advance delay (ms)</label>
+              <label>Auto-advance delay-(ms)</label>
               <input v-model.number="settings.autoAdvanceDelayMs" class="text_pole" type="number" min="0" max="30000" step="100" />
               <small>Wait after reveal finishes before autoplay advances. 0 = immediate.</small>
             </div>
@@ -435,8 +435,8 @@
 
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
-import { useRenpyPlayerSettingsStore } from './settings';
 import CustomSelect from './CustomSelect.vue';
+import { useRenpyPlayerSettingsStore } from './settings';
 
 const store = useRenpyPlayerSettingsStore();
 const { settings, characterSpriteConfigError } = storeToRefs(store);
