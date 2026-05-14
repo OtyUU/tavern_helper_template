@@ -755,11 +755,6 @@ export function useRenpyPlayerController() {
       '--renpy-hud-show-ms': msOrZero(settings.value.hudShowDurationMs),
       '--renpy-hud-hide-drift-ms': msOrZero(Math.round(settings.value.hudHideDurationMs * 1.25)),
       '--renpy-hud-drift-px': `${settings.value.hudHideDriftPx}px`,
-
-      '--renpy-sprite-offset-y': `${Math.round(
-        settings.value.spriteBaselineOffsetPx * settings.value.stageHeight / 480,
-      )}px`,
-      '--sprite-y': 'var(--renpy-sprite-offset-y, 0px)',
     };
   });
 
@@ -883,11 +878,9 @@ export function useRenpyPlayerController() {
     };
   });
 
-  const spriteStyle = computed(() => {
-    return {
-      '--sprite-scale': '1',
-    };
-  });
+  const spriteBaselineYPx = computed(() =>
+    Math.round(settings.value.spriteBaselineOffsetPx * settings.value.stageHeight / 480),
+  );
 
   const cameraAnimationClass = computed(
     () => getCameraAnimationClass(displayedCameraAnimations.value),
@@ -943,16 +936,35 @@ export function useRenpyPlayerController() {
       const referenceHeight = getSpriteReferenceHeight(sprite.id);
       const normalizationScale = getSpriteNormalizationScale(sprite);
 
+      const xPx = getSpriteAnchorXPx(sprite.position);
+      const yPx = spriteBaselineYPx.value;
+
+      const kind = getSpriteAnimationKind(sprite.animations);
+
       return {
         ...sprite,
         renderKey: sprite.id,
-        animationClass: getSpriteAnimationClass(sprite.animations),
-        shellStyle: {
-          ...getSpriteShellStyle(sprite.position),
-          '--sprite-ref-height': `${referenceHeight}px`,
-          '--sprite-normalize-scale': `${normalizationScale}`,
+
+        fxAnimationClass: kind === 'shake'
+          ? 'renpy-player__sprite--shake'
+          : kind === 'bounce'
+            ? 'renpy-player__sprite--bounce'
+            : '',
+
+        pulseAnimationClass: kind === 'pulse'
+          ? 'renpy-player__sprite--pulse'
+          : '',
+
+        motionStyle: {
+          transform: `translate3d(${xPx}px, 0, 0) translateX(-50%) translateY(${yPx}px)`,
         },
+
+        normalizeStyle: {
+          transform: `scale(${normalizationScale})`,
+        },
+
         swapDurationMs: getSpriteSwapDuration(sprite),
+        referenceHeight,
       };
     });
   });
@@ -1009,11 +1021,6 @@ export function useRenpyPlayerController() {
   function getSpriteAnchorXPx(position: SpritePosition): number {
     const xPct = getSpriteAnchorXPct(position);
     return Math.round(stageWidth.value * (xPct / 100));
-  }
-
-  function getSpriteShellStyle(position: SpritePosition) {
-    const xPx = getSpriteAnchorXPx(position);
-    return { transform: `translate3d(${xPx}px, 0, 0) translateX(-50%)` };
   }
 
   function getSpriteSwapDuration(sprite: PlayerFrame['sprites'][number]): number {
@@ -1091,6 +1098,14 @@ export function useRenpyPlayerController() {
   );
 
   // ─── Scene presentation helpers ────────────────────────────────────────────
+
+  function getSpriteAnimationKind(animations?: string[]): string | null {
+    if (effectsDisabled.value || !animations?.length) return null;
+    if (animations.includes('shake')) return 'shake';
+    if (animations.includes('bounce')) return 'bounce';
+    if (animations.includes('pulse')) return 'pulse';
+    return null;
+  }
 
   function getSpriteAnimationClass(animations?: string[]): string | undefined {
     if (effectsDisabled.value || !animations?.length) {
@@ -1568,7 +1583,6 @@ export function useRenpyPlayerController() {
       sceneFadeStyle,
       backgroundCameraStyle,
       spriteCameraStyle,
-      spriteStyle,
       cameraAnimationClass,
       cameraLayerAnimatingClass,
       cameraDiagnosticsLabel,

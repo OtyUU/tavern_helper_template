@@ -42,23 +42,41 @@
         <div
           v-for="sprite in controller.scene.renderedSprites"
           :key="sprite.renderKey"
-          ref="spriteShellRefs"
           class="renpy-player__sprite-shell"
           :data-sprite-id="sprite.id"
-          :style="sprite.shellStyle"
         >
-          <SmartImage
-            class="renpy-player__sprite"
-            :class="sprite.animationClass"
-            :style="controller.scene.spriteStyle"
-            :candidates="sprite.asset?.candidates ?? []"
-            :alt="sprite.asset?.description ?? sprite.id"
-            :swap-duration-ms="sprite.swapDurationMs"
-            :resample-target-height="controller.scene.spriteResampleTargetHeight"
-            @resolved="controller.scene.onSpriteResolved(sprite.id, $event)"
-            @resolution-status="controller.diagnostics.onAssetResolutionStatus(sprite.id, $event)"
-            @swap-start="controller.scene.onSmartImageSwapStart(sprite.id, $event)"
-          />
+          <div
+            class="renpy-player__sprite-fx"
+            :class="sprite.fxAnimationClass"
+          >
+            <div
+              ref="spriteMotionRefs"
+              class="renpy-player__sprite-motion"
+              :data-sprite-id="sprite.id"
+              :style="sprite.motionStyle"
+            >
+              <div
+                class="renpy-player__sprite-pulse"
+                :class="sprite.pulseAnimationClass"
+              >
+                <div
+                  class="renpy-player__sprite-normalize"
+                  :style="sprite.normalizeStyle"
+                >
+                  <SmartImage
+                    class="renpy-player__sprite"
+                    :candidates="sprite.asset?.candidates ?? []"
+                    :alt="sprite.asset?.description ?? sprite.id"
+                    :swap-duration-ms="sprite.swapDurationMs"
+                    :resample-target-height="controller.scene.spriteResampleTargetHeight"
+                    @resolved="controller.scene.onSpriteResolved(sprite.id, $event)"
+                    @resolution-status="controller.diagnostics.onAssetResolutionStatus(sprite.id, $event)"
+                    @swap-start="controller.scene.onSmartImageSwapStart(sprite.id, $event)"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </TransitionGroup>
     </div>
@@ -74,7 +92,7 @@ const controller = useRenpyPlayer();
 
 const bgCameraRef = ref<HTMLElement | null>(null);
 const spriteCameraRef = ref<HTMLElement | null>(null);
-const spriteShellRefs = ref<HTMLElement[]>([]);
+const spriteMotionRefs = ref<HTMLElement[]>([]);
 
 onMounted(() => {
   controller.scene.setBackgroundCameraElement(bgCameraRef.value);
@@ -86,7 +104,7 @@ watch(
   (signature, prevSignature) => {
     if (!prevSignature) return;
     if (signature === prevSignature) return;
-    controller.scene.trackSpritePositionTransitions(spriteShellRefs.value);
+    controller.scene.trackSpritePositionTransitions(spriteMotionRefs.value);
   },
   { flush: 'post' }
 );
