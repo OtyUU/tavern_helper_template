@@ -18,7 +18,7 @@ Five steps, spanning four files — this is the core mental model:
 
 ## The displayed/current Split
 
-`SceneLayer` and camera computeds read from `displayedBackground`, `displayedSprites`, `displayedCamera` (`PlayerCameraIntent`), and `displayedCameraAnimations` — not from `currentFrame`. During a scene crossfade, these refs update at deliberate moments (background/camera at midpoint, sprites at the end). **Any new visual presentation code must read from `displayed*` refs, never from `currentFrame` directly.**
+`SceneLayer` and camera computeds read from `displayedBackground`, `displayedSprites`, `displayedCamera` (`PlayerCameraIntent`), and `displayedCameraAnimations` — not from `currentFrame`. During a scene crossfade, these refs update at deliberate moments (background/camera at midpoint, sprites at the end). `applyDisplayedFrame()` only writes to `displayedBackground` and `displayedCamera` when their values actually change (compared by content, not reference), which prevents spurious WAAPI from/to captures. **Any new visual presentation code must read from `displayed*` refs, never from `currentFrame` directly.**
 
 ## Runtime Environment
 
@@ -58,11 +58,10 @@ To register a new animation with the bus: call `bus.register(cancelFn)` **synchr
 
 - ✅ Scene crossfade (full-screen fade, timeout-based, registered in `useScenePresentation.applyFrame`)
 - ✅ Sprite enter/leave visibility fades (WAAPI-based, registered in `useSpriteVisibilityTransitions` TransitionGroup hooks)
-- ✅ Camera transform CSS transitions (registered in `useScenePresentation.trackCameraTransformTransition` when camera preset/pan changes)
-- ✅ Sprite position CSS transitions (registered in `useScenePresentation.trackSpritePositionTransitions` when sprite positions change)
+- ✅ Camera transform WAAPI animations (registered in `useScenePresentation.trackCameraTransformTransition` when camera preset/pan changes)
+- ✅ Sprite motion WAAPI animations (registered in `useScenePresentation.trackSpritePositionTransitions` on `.renpy-player__sprite-motion`)
 - ✅ SmartImage swaps (timeout-based, registered in `controller.onSmartImageSwapStart` when `@swap-start` fires during `phase === 'scene'`)
 - ✅ Camera shake animation (fixed 450ms timeout, registered via watcher on `cameraAnimationClass` in controller)
-- ✅ DOM update lock (temporary hold registered in `applyFrame`, released in `nextTick` after Vue patches DOM and component watchers run)
 
 **Intentionally NOT registered (does not block reveal):**
 
@@ -70,6 +69,8 @@ To register a new animation with the bus: call `bus.register(cancelFn)` **synchr
 - ❌ HUD show/hide animations (handled separately via `hudShowInProgress` / `blockReveal`)
 - ❌ Dialogue text reveal itself (that's what the bus is blocking)
 - ❌ CSS transitions caused by settings/geometry changes (not tied to frame presentation)
+
+**Firefox note:** Camera and sprite motion WAAPI uses UA-sniffed easing: Firefox gets `cubic-bezier(0.2, 0.1, 0.8, 0.9)` (near-linear tails to avoid visible resampling shimmer), other browsers get standard `ease`. This avoids the "near-stationary" tail shimmer that `ease` triggers in Firefox while preserving smooth motion elsewhere.
 
 **Important policy:** Only animations that affect staging or readability should block reveal. If registration is deferred (e.g., inside `requestAnimationFrame` or waiting for an image to load), the FSM can see `count === 0` during the gap and prematurely advance to `reveal`. Unregistered animations will not block phase transitions.
 
@@ -98,15 +99,37 @@ Prevents the viewport from showing a half-generated message:
 
 ### Two-Layer Camera Architecture
 
-Camera pan + zoom is applied to two sibling `renpy-player__camera-layer` divs in `SceneLayer.vue`, not to individual sprites or the background element. Each layer gets its own computed style (`backgroundCameraStyle` / `spriteCameraStyle`) with `translate(x, y) scale(zoom)`.
+Camera pan + zoom is applied to two sibling `renpy-player__camera-layer` divs in `SceneLayer.vue`, not to individual sprites or the background element. Each layer gets its own computed style (`backgroundCameraStyle` / `spriteCameraStyle`) combining scale + translate.
 
-- **Unified zoom.** A single `backgroundScale` per preset controls zoom for both layers. The old separate `spriteScale` is dead — `spriteStyle` always sets `--sprite-scale: 1`. The schema still carries `*SpriteScale` fields for backward compatibility but nothing reads them.
+- **Preset-driven zoom.** Presets provide both `backgroundScale` and `spriteScale` (sprites can zoom differently than background). Background zoom can also apply a parallax factor (`bgZoomParallax`) to reduce perceived background zoom relative to sprites.
 - **Parallax.** `bgPanParallax` (0–1) multiplies the pan offset on the background camera layer. At 1.0 the background pans identically to sprites; below 1.0 it moves less (parallax effect).
-- **Inline transitions.** Camera layers use `resolvedCameraTransitionMs` (a computed, not a CSS variable) which returns 0 when `effectsDisabled` or `isSceneTransitioning`. This avoids sub-pixel jitter from `translate3d` + CSS-variable-based transitions.
+- **WAAPI transitions.** Camera and sprite motion are animated with WAAPI via `animateCameraLayerWAAPI()` in `useScenePresentation`. Uses a FLIP pattern where "from" is captured from `prevBackgroundTransform`/`prevSpriteTransform` refs (not `getComputedStyle`), and "to" is read from `style.transform` in `nextTick`. A `sharedTransformStartTime` synchronizes start time across bg/sprite cameras and sprite motions for perfect alignment. Duration is effectively zeroed when `effectsDisabled`, `prefersReducedMotion`, `isSceneTransitioning`, or `cameraTransitionMs <= 0`. CSS transitions are not used for transforms. WAAPI uses `fill: 'both'` (cleanup always `cancel()`s, reverting to Vue's inline `style.transform`).
+- **Firefox shimmer mitigation.** Firefox can show visible wobble when animating eased scale+translate transforms. A UA-sniffed custom cubic-bezier replaces `ease` on Firefox (see Firefox note in Phase FSM section).
 - **Pixel-based sprite shells.** Sprite horizontal position is `transform: translate3d(xPx, 0, 0) translateX(-50%)` computed via `stageWidth`, not a `left: %`. This is because camera-layer `scale()` would distort percentage-based `left` positions.
 - **`PlayerCameraIntent`** (types.ts) carries `preset`, `panXPct?`, `panYPct?` — no pixel values, safe to persist through history replay. `normalizeCameraFromFrame()` in `camera-utils.ts` migrates legacy `cameraTransform` frames.
 - **Automatic horizontal pan.** When `panXPct` is undefined in `PlayerCameraIntent`, the camera automatically centers all visible sprites. `autoPanXPct` computes the center point between the leftmost and rightmost sprites, then calculates the pan offset needed to center that point on stage. Manual `panXPct` values (when implemented in parser) override this behavior.
-- **Transition tracking.** `useScenePresentation` tracks `transform` transitions on both camera layer elements (`backgroundCameraElement`, `spriteCameraElement`), not on the background `<img>` directly.
+- **Transition tracking.** `useScenePresentation` tracks WAAPI `transform` animations on both camera layer elements and sprite motion elements via a shared `activeCameraAnimationTrackers` WeakMap. The same `animateCameraLayerWAAPI()` function handles both camera and sprite motion WAAPI.
+
+### Sprite Transform Stack (Wrappers)
+
+Sprites are rendered with a wrapper stack to avoid split-axis transforms, preserve keyframe effect semantics, and allow WAAPI motion tracking:
+
+- `.renpy-player__sprite-shell` — TransitionGroup enter/leave target; owns opacity fades (WAAPI in `useSpriteVisibilityTransitions`).
+- `.renpy-player__sprite-fx` — hosts CSS keyframe effects that translate (shake/bounce). Not bus-tracked.
+- `.renpy-player__sprite-motion` — owns the *base positional transform* (anchor X + baseline Y). Sprite position changes are WAAPI-animated here and bus-tracked (`trackSpritePositionTransitions`). Uses the same `animateCameraLayerWAAPI()` as camera layers, with `prevSpriteMotionTransformById` caching "from" transforms per sprite ID. Adds `renpy-player__sprite-motion--animating` CSS class during animation (removed on complete/cancel).
+- `.renpy-player__sprite-pulse` — hosts scale-only pulse keyframes (kept separate so baseline translate is not unintentionally scaled).
+- `.renpy-player__sprite-normalize` — static normalization scale derived from first-resolved asset height.
+- `<SmartImage.renpy-player__sprite>` — image swap/fade is handled by SmartImage; swap-start is bus-tracked during `phase === 'scene'`.
+
+### SmartImage Lanczos3 Resampling
+
+`SmartImage` optionally downsamples oversized images via Pica (Lanczos3) to reduce GPU memory and improve rendering quality. This spans `SmartImage.vue` (resampling + blob lifecycle), `SceneLayer.vue` (passes prop), and `useRenpyPlayerController.ts` (computes target height).
+
+- **Target height**: `spriteResampleTargetHeight = stageHeight * 2`, passed to every `<SmartImage>` instance via `resample-target-height` prop. Undefined = disabled.
+- **Activation gate**: Resampling only fires when `naturalHeight > resampleTargetHeight * 1.5` (real downsampling only, never upsampling).
+- **Blob URL ownership**: SmartImage tracks all blob URLs it creates via `ownedBlobUrls` Set. Revoked when no longer displayed (not in `currentSrc` or `previousSrc`) and on unmount. This prevents memory leaks.
+- **Output format**: PNG (lossless, no re-encoding artifacts).
+- **Dimension invariant**: `naturalWidth`/`naturalHeight` in the resolved payload come from the original image, not the resampled canvas — normalization scale must be based on the original aspect ratio.
 
 ### Cross-Message Bridge
 
@@ -121,16 +144,16 @@ When navigating between messages, `pendingBridge` supplies the last frame of the
 - **`TransitionGroup`** keys sprites by `renderKey = sprite.id`. Re-showing the same character updates the existing node; enter/leave hooks only fire for genuine add/remove.
 - **Speaker display** uses `displayedSpeaker` (from `useDialogueReveal`), not a direct computed from the current frame. Has a three-way transition model (appear/disappear/change).
 - **`beginReveal()` is called by the phase FSM** — do not call it directly from other code.
-- **`isBusy`** is `computed(() => phase.value === 'scene')`. Gates transport controls. Never set `phase.value` directly — the FSM manages all transitions.
+- **`isBusy`** is derived from the Phase FSM (`useFramePhase`) and gates transport controls. Treat it as "frame is not ready to advance yet". Never set `phase.value` directly — the FSM manages all transitions.
 - **`autoPlayDelayMs`** in settings schema is a dead field — not read anywhere. Do not wire new code to it. Use `autoAdvanceDelayMs` instead.
 - **`hudHideScope`** controls when the HUD hides: `'scene-only'` (default) hides during scene crossfades; `'all-motion'` hides during any bus activity. `hudShowInProgress` blocks `scene → reveal` until the HUD show animation completes.
 - **`pendingFrameTarget { kind: 'last' }`** uses `Number.MAX_SAFE_INTEGER` as a sentinel; the `watch(frames)` handler clamps it.
-- **Camera presentation** (`backgroundCameraStyle`, `spriteCameraStyle`, `spriteStyle`, `cameraAnimationClass`) reads from `displayedCamera`/`displayedCameraAnimations`, not `currentFrame`. Camera transitions are inline (`resolvedCameraTransitionMs`) and zeroed during `isSceneTransitioning`.
-- **Fallback timeouts** — CSS transition trackers set `cameraTransitionMs + 50` ms fallbacks in case `transitionend` never fires. Sprite enter WAAPI animations also set a 3s fallback if `<SmartImage>` never resolves.
+- **Camera presentation** (`backgroundCameraStyle`, `spriteCameraStyle`, `spriteStyle`, `cameraAnimationClass`) reads from `displayedCamera`/`displayedCameraAnimations`, not `currentFrame`. Camera transitions use WAAPI only (no CSS `transition` property on camera layers); `resolvedCameraTransitionMs` drives WAAPI duration + will-change toggling.
+- **Fallback timeouts** — WAAPI transform trackers use a `duration + 50ms` fallback timeout in case `finish/cancel` events are not delivered. Sprite enter WAAPI animations also set a 3s fallback if `<SmartImage>` never resolves.
 - **SmartImage swap blockers have fallback cleanup.** Swap blockers are de-duped per sprite/background key and auto-cleaned via timeout (`swapDurationMs + 75ms` buffer) even if the element unmounts mid-swap. Cleanup is also run on scope dispose. Swaps that begin after `phase !== 'scene'` are ignored to avoid hiding HUD mid-reveal.
-- **DOM Update Race Conditions** — Changing refs like `displayedSprites` triggers asynchronous Vue DOM patches. To prevent the Phase FSM from advancing to `reveal` *before* Vue calls `<TransitionGroup>` hooks, `applyFrame` holds a temporary `bus.register` lock and releases it in `nextTick`.
 - **Sprite lazy loading and WAAPI** — In `onSpriteEnter`, WAAPI animations must wait for `<SmartImage>` to emit `@resolved` (via `triggerSpriteEnterAnimation`), otherwise the fade runs on a blank unpainted shell. But `bus.register()` must still happen synchronously upfront to block the FSM while the image loads.
 - **Camera shake vs sprite shake.** Camera shake (scene-layer keyframes) is bus-tracked via a fixed 450ms timeout. Sprite shake/bounce/pulse are NOT tracked and do not block reveal (by design).
+- **`--renpy-camera-transition-ms` is legacy/diagnostic.** Camera + sprite motion use WAAPI exclusively; the variable may remain for styling/diagnostics but does not control transform animation timing.
 
 ---
 

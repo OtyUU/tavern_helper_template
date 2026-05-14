@@ -548,6 +548,13 @@ export function useScenePresentation(
     trackCameraTransformTransition();
   }
 
+  const isFirefox =
+    typeof navigator !== 'undefined' && /Firefox\/\d+/i.test(navigator.userAgent);
+
+  const CAMERA_TRANSFORM_EASING = isFirefox
+    ? 'cubic-bezier(0.15, 0.05, 0.85, 0.95)'
+    : 'ease';
+
   function trackCameraTransformTransition(options: { syncOnly?: boolean } = {}): void {
     const bgEl = backgroundCameraElement.value;
     const spriteEl = spriteCameraElement.value;
@@ -621,6 +628,7 @@ export function useScenePresentation(
           deregister();
         },
         sharedStartTime,
+        CAMERA_TRANSFORM_EASING,
       );
       };
 
@@ -667,6 +675,7 @@ export function useScenePresentation(
     durationMs: number,
     onDone?: () => void,
     explicitStartTime?: number | null,
+    easing: string = 'ease',
   ): () => void {
     if (durationMs <= 0) {
       onDone?.();
@@ -688,7 +697,7 @@ export function useScenePresentation(
 
     const animation = element.animate(
       [{ transform: fromTransform }, { transform: toTransform }],
-      { duration: durationMs, easing: 'ease', fill: 'both' },
+      { duration: durationMs, easing, fill: 'both' },
     );
 
     if (explicitStartTime != null) {
@@ -787,6 +796,7 @@ export function useScenePresentation(
         durationMs,
         onDone,
         sharedTransformStartTime.value,
+        CAMERA_TRANSFORM_EASING,
       );
       deregister = bus.register(cleanup);
     }
