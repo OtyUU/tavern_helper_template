@@ -2,135 +2,114 @@
 
 Agent-facing context for `src/renpy-player`. Covers architecture, invariants, and traps — things that span multiple files or would cause bugs if missed. For implementation details, read the relevant source file directly.
 
-## Purpose
+## Data Pipeline (core mental model)
 
-Renders a Ren'Py-like VN viewport inside the SillyTavern chat UI from LLM-produced text. The **chat** is the interaction surface; the **viewport** visualizes parsed scene + dialogue frames for the selected message.
-
-## Data Pipeline
-
-Five steps, spanning four files — this is the core mental model:
-
-1. **Parse** — `parseScriptFromMessage(message)` → flat `ScriptCommand[]` list.
-2. **Replay history** — `getInitialState()` feeds all prior messages through `StageState` to produce the visual starting point for the current message. This is stateless — same inputs always produce same outputs.
-3. **Build frames** — `buildFrames(parsed, { initialState })` runs commands through `StageState`, emitting one `PlayerFrame` per `dialogue` command. Frames are plain snapshots with no behavior attached.
-4. **Select** — The cursor (`activeMessageId` + `frameIndex`) picks one frame → `currentFrame`.
-5. **Present** — `watch(currentFrame)` triggers `applyFrame()` in `useScenePresentation`, which updates `displayed*` refs that Vue renders.
+1. **Parse** — `parseScriptFromMessage(message)` → flat `ScriptCommand[]`
+2. **Replay history** — `getInitialState()` feeds all prior messages through `StageState` → `InitialPlayerState`. Stateless: same inputs = same output.
+3. **Build frames** — `buildFrames(parsed, { initialState })` emits one `PlayerFrame` per `dialogue` command.
+4. **Select** — cursor (`activeMessageId` + `frameIndex`) → `currentFrame`
+5. **Present** — `watch(currentFrame)` → `applyFrame()` in `useScenePresentation` → updates `displayed*` refs that Vue renders
 
 ## The displayed/current Split
 
-`SceneLayer` and camera computeds read from `displayedBackground`, `displayedSprites`, `displayedCamera` (`PlayerCameraIntent`), and `displayedCameraAnimations` — not from `currentFrame`. During a scene crossfade, these refs update at deliberate moments (background/camera at midpoint, sprites at the end). **Any new visual presentation code must read from `displayed*` refs, never from `currentFrame` directly.**
+All rendering reads from `displayedBackground`, `displayedSprites`, `displayedCamera`, `displayedCameraAnimations` — **never from `currentFrame` directly**. During scene crossfades these update at deliberate moments (bg/camera at midpoint, sprites at end). `applyDisplayedFrame()` only writes a ref when its value actually changes (content comparison), preventing spurious WAAPI captures.
+
+`renderedSprites` (computed in controller) projects `displayedSprites` into render-ready objects adding `renderKey`, `motionStyle`, `normalizeStyle`, animation classes, `swapDurationMs`. `SceneLayer.vue` renders `renderedSprites`, not `displayedSprites`.
 
 ## Runtime Environment
 
-- **Script module, not an iframe.** `index.ts` mounts Vue apps directly onto the SillyTavern host page via jQuery. No `index.html`.
-- **Style teleportation.** Compiled styles don't reach the host page from the background iframe. `teleportStyle()` copies them. Use unscoped SCSS with BEM `renpy-player__` classes — **no Tailwind** (class collisions with SillyTavern), no `:deep()`.
-- **DOM re-anchoring.** The player host (`#th-renpy-player`) must be re-inserted on `CHAT_CHANGED` and `MORE_MESSAGES_LOADED` because SillyTavern rebuilds the chat DOM.
-- **Swipes.** Swiping does not change `message_id` — same message, new swipe text.
-- **Lifecycle.** Init in `$(() => { ... })`. Cleanup via `$(window).on('pagehide', ...)`.
-- **Auto-imports.** Vue Composition API, Zod (`z`), VueUse, and Pinia are auto-imported. Check `auto-imports.d.ts` for the full list. Options API is disabled; always use `<script setup lang="ts">`.
-- **Tavern Helper API.** `getChatMessages`, `eventOn`, `getVariables`, `insertOrAssignVariables`, etc. See the Tavern Helper docs referenced in `CLAUDE.md` for signatures and event types.
+- **Script module, not an iframe.** Vue apps mount onto the SillyTavern host page via jQuery. No `index.html`.
+- **Style teleportation.** Compiled styles don't reach the host page. `teleportStyle()` copies them. Use unscoped SCSS with `renpy-player__` BEM — no Tailwind, no `:deep()`.
+- **DOM re-anchoring.** `ensurePlayerHost()` must be called on `CHAT_CHANGED` and `MORE_MESSAGES_LOADED` — SillyTavern rebuilds the chat DOM.
+- **Auto-imports.** Vue Composition API, Zod (`z`), VueUse, Pinia are auto-imported. Options API disabled — always use `<script setup lang="ts">`.
+- **`getChatMessages()` is not reactive.** Any computed calling it must read `historyTrigger.value` first to be invalidated by `fullSync()`.
 
 ## Architectural Invariants
 
 ### Stateless Parser + History Replay
 
-The parser has no persistent state. Statefulness comes from replaying history on every recompute:
+Parser has no persistent state. On every recompute: fetch messages 0..N-1, parse each, feed into a temporary `StageState`, `flush()` → `InitialPlayerState`, pass as `initialState` to `buildFrames()`. Editing any earlier message propagates forward automatically on the next `historyTrigger` bump.
 
-1. Fetch messages 0 through N-1, run each through `parseScriptFromMessage`, feed into a temporary `StageState`.
-2. `flush()` produces `InitialPlayerState` — the visual context at message N's start.
-3. Pass as `initialState` into `buildFrames()`.
+**The parser must remain truly stateless** — no module-level mutable state, no caches that outlive a single call.
 
-This means editing any earlier message automatically propagates forward on the next `historyTrigger` bump. The parser **must** remain truly stateless — no module-level mutable state, no caches that outlive a single call. Side effects would produce different results depending on call order, breaking the replay guarantee.
+### `scene` command behaviour
 
-**`historyTrigger`** is the reactive bridge. `getChatMessages()` is not reactive, so any computed that calls it must read `historyTrigger.value` first.
+A bare `scene` (no background name) clears sprites and resets camera to `default` but **keeps the current background unchanged**. Only updates background when a name is provided.
+
+### `buildFrames` synthetic frames
+
+If no dialogue commands exist but visuals do, a synthetic frame is appended:
+- No commands at all → speaker `'Active Scene'`
+- Commands present but no dialogue → speaker `'Scene Preview'`
+- Trailing non-dialogue commands after last dialogue + `stage.hasVisuals()` → `'Scene Preview'` frame appended
 
 ### Phase FSM
 
-Three phases govern frame playback: `scene → reveal → done`. Every frame advance resets to `scene`.
+Three phases: `scene → reveal → done`. Every frame advance resets to `scene`.
 
-- **`scene`**: Visual animations are settling. `useTransitionBus` tracks in-flight transitions via a reactive `count`. When `bus.count === 0` (and `blockReveal` is false), the FSM advances to `reveal`. In instant/reduced-motion mode, this fires immediately.
-- **`reveal`**: `beginReveal()` starts the typewriter effect. Stage clicks skip to fully revealed text.
-- **`done`**: Ready to advance. Stage clicks move to the next frame; autoplay proceeds after its delay.
+- **`scene`**: Blocks until `bus.count === 0` AND `blockReveal === false`. In instant/reduced-motion mode, fires immediately.
+- **`reveal`**: `beginReveal()` starts typewriter. Stage clicks skip to full reveal.
+- **`done`**: Ready to advance.
 
-To register a new animation with the bus: call `bus.register(cancelFn)` **synchronously** before the animation begins, and call the returned cleanup when it finishes. Cleanup must be idempotent.
+**What blocks `scene → reveal` (registered with bus):**
+- Scene crossfade (timeout-based)
+- Sprite enter/leave fades (WAAPI via TransitionGroup hooks)
+- Camera transform WAAPI
+- Sprite motion WAAPI
+- SmartImage swaps during `phase === 'scene'` (timeout-based, de-duped per key)
+- Camera shake (fixed 450ms timeout)
 
-**Current bus registrations (what blocks `scene → reveal`):**
+**Intentionally NOT registered:** sprite keyframe animations (shake/bounce/pulse), HUD show/hide (gated via `hudShowInProgress`/`blockReveal` instead), dialogue reveal itself.
 
-- ✅ Scene crossfade (full-screen fade, timeout-based, registered in `useScenePresentation.applyFrame`)
-- ✅ Sprite enter/leave visibility fades (WAAPI-based, registered in `useSpriteVisibilityTransitions` TransitionGroup hooks)
-- ✅ Camera transform CSS transitions (registered in `useScenePresentation.trackCameraTransformTransition` when camera preset/pan changes)
-- ✅ Sprite position CSS transitions (registered in `useScenePresentation.trackSpritePositionTransitions` when sprite positions change)
-- ✅ SmartImage swaps (timeout-based, registered in `controller.onSmartImageSwapStart` when `@swap-start` fires during `phase === 'scene'`)
-- ✅ Camera shake animation (fixed 450ms timeout, registered via watcher on `cameraAnimationClass` in controller)
-- ✅ DOM update lock (temporary hold registered in `applyFrame`, released in `nextTick` after Vue patches DOM and component watchers run)
-
-**Intentionally NOT registered (does not block reveal):**
-
-- ❌ Sprite keyframe animations (shake/bounce/pulse) — cosmetic, should not delay dialogue
-- ❌ HUD show/hide animations (handled separately via `hudShowInProgress` / `blockReveal`)
-- ❌ Dialogue text reveal itself (that's what the bus is blocking)
-- ❌ CSS transitions caused by settings/geometry changes (not tied to frame presentation)
-
-**Important policy:** Only animations that affect staging or readability should block reveal. If registration is deferred (e.g., inside `requestAnimationFrame` or waiting for an image to load), the FSM can see `count === 0` during the gap and prematurely advance to `reveal`. Unregistered animations will not block phase transitions.
+**Important:** `bus.register()` must happen **synchronously** before an animation begins. If deferred into `requestAnimationFrame` or behind an image load, FSM can see `count === 0` and prematurely advance.
 
 ### Settings Mutation
 
-`updateSettings(draft => { ... })` is the **only** way controller code mutates settings. It clones via `klona()`, runs the updater, then assigns back. Never assign `settings.value.x = ...` directly. More broadly, `klona()` is mandatory before any `insertOrAssignVariables()` call or any Tavern Helper API receiving a reactive value.
+`updateSettings(draft => { ... })` is the **only** way controller code mutates settings — clones via `klona()`, runs updater, assigns back. Never `settings.value.x = ...` directly. `klona()` is also required before any `insertOrAssignVariables()` call.
 
 ### Sync Tiers
 
-- **`fullSync(options?)`** — Heavy: rebuilds playable index, bumps `historyTrigger`, resolves message IDs. Used for `CHAT_CHANGED`, `MESSAGE_DELETED`, `MORE_MESSAGES_LOADED`, initial mount.
-- **`refreshCurrentMessageOnly()`** — Light: bumps `historyTrigger` only. Used for in-place edits/swipes of the current message.
+- **`fullSync()`** — Heavy: rebuilds playable index, bumps `historyTrigger`, resolves message IDs. For `CHAT_CHANGED`, `MESSAGE_DELETED`, `MORE_MESSAGES_LOADED`, initial mount.
+- **`refreshCurrentMessageOnly()`** — Light: bumps `historyTrigger` only. For in-place edits/swipes of the current message.
 
 ### Generation Lock
 
-Prevents the viewport from showing a half-generated message:
-
-1. `GENERATION_STARTED` predicts the target message ID, adds it to `excludedPlayableMessageIds`, and jumps the viewport to a safe prior frame.
-2. First `MESSAGE_UPDATED` during generation confirms (or retargets) the lock. Subsequent updates for the locked target are ignored to avoid parse churn.
-3. `GENERATION_ENDED` / `GENERATION_STOPPED` clears exclusions and rebuilds the playable index.
+1. `GENERATION_STARTED` predicts target message ID, adds to `excludedPlayableMessageIds`, jumps viewport to safe prior frame.
+2. First `MESSAGE_UPDATED` confirms (or retargets) the lock. Subsequent updates for the locked target are ignored.
+3. `GENERATION_ENDED` / `GENERATION_STOPPED` clears exclusions and rebuilds index.
 
 ### Motion Mode
 
-- `'instant'` — set by backward navigation, manual message jumps, and safe-frame jumps. Zeroes all transition durations.
-- `'normal'` — set by forward navigation and cross-message forward jumps.
-- `effectsDisabled = prefersReducedMotion || motionMode === 'instant'` — governs whether animations play.
+- `'instant'` — backward navigation, manual jumps, safe-frame jumps. Zeroes all transition durations.
+- `'normal'` — forward navigation, cross-message forward jumps.
+- `effectsDisabled = prefersReducedMotion || motionMode === 'instant'`
 
-### Two-Layer Camera Architecture
+### Camera Architecture
 
-Camera pan + zoom is applied to two sibling `renpy-player__camera-layer` divs in `SceneLayer.vue`, not to individual sprites or the background element. Each layer gets its own computed style (`backgroundCameraStyle` / `spriteCameraStyle`) with `translate(x, y) scale(zoom)`.
+Two sibling `camera-layer` divs (bg + sprites) each get `scale + translate3d` via `backgroundCameraStyle` / `spriteCameraStyle`. Animated with WAAPI (not CSS transitions) using a FLIP pattern: "from" captured from `prevBackgroundTransform`/`prevSpriteTransform` refs, "to" read in `nextTick`. `sharedTransformStartTime` synchronizes start time across both layers and sprite motions.
 
-- **Unified zoom.** A single `backgroundScale` per preset controls zoom for both layers. The old separate `spriteScale` is dead — `spriteStyle` always sets `--sprite-scale: 1`. The schema still carries `*SpriteScale` fields for backward compatibility but nothing reads them.
-- **Parallax.** `bgPanParallax` (0–1) multiplies the pan offset on the background camera layer. At 1.0 the background pans identically to sprites; below 1.0 it moves less (parallax effect).
-- **Inline transitions.** Camera layers use `resolvedCameraTransitionMs` (a computed, not a CSS variable) which returns 0 when `effectsDisabled` or `isSceneTransitioning`. This avoids sub-pixel jitter from `translate3d` + CSS-variable-based transitions.
-- **Pixel-based sprite shells.** Sprite horizontal position is `transform: translate3d(xPx, 0, 0) translateX(-50%)` computed via `stageWidth`, not a `left: %`. This is because camera-layer `scale()` would distort percentage-based `left` positions.
-- **`PlayerCameraIntent`** (types.ts) carries `preset`, `panXPct?`, `panYPct?` — no pixel values, safe to persist through history replay. `normalizeCameraFromFrame()` in `camera-utils.ts` migrates legacy `cameraTransform` frames.
-- **Automatic horizontal pan.** When `panXPct` is undefined in `PlayerCameraIntent`, the camera automatically centers all visible sprites. `autoPanXPct` computes the center point between the leftmost and rightmost sprites, then calculates the pan offset needed to center that point on stage. Manual `panXPct` values (when implemented in parser) override this behavior.
-- **Transition tracking.** `useScenePresentation` tracks `transform` transitions on both camera layer elements (`backgroundCameraElement`, `spriteCameraElement`), not on the background `<img>` directly.
+**Firefox:** Uses `cubic-bezier(0.15, 0.05, 0.85, 0.95)` instead of `ease` to avoid transform animation shimmer.
+
+**Auto pan:** When `panXPct` is undefined in `PlayerCameraIntent`, camera auto-centers visible sprites via `autoPanXPct` computed.
 
 ### Cross-Message Bridge
 
-When navigating between messages, `pendingBridge` supplies the last frame of the previous message as `prevFrame` to `applyFrame`, so scene transitions animate correctly rather than snapping from `null`.
+`pendingBridge` supplies the last frame of the previous message as `prevFrame` to `applyFrame()` so transitions animate correctly across messages.
+
+`createBridge: true` only on **forward** navigation (`stepForwardInternal` cross-message, `maybeFollowLatestPlayable`). All **backward** navigation and manual jumps use `createBridge: false` — a stale bridge going backward produces incorrect transition "from" state.
 
 ## Sharp Edges
 
-- **`flush()` is both read and clear.** It returns a snapshot and clears pending animations. Don't call it just for the side effect without capturing the return value.
-- **`source:'message'`** is returned when `ignoredLines.length > 0` even if `commands.length === 0`.
-- **`ensurePlayerHost()`** must be called on `CHAT_CHANGED` — SillyTavern rebuilds the chat DOM.
-- **Normalization scale locks on first `SmartImage` resolution.** Hot-swapping a character's asset set after initial load will not update the scale.
-- **`TransitionGroup`** keys sprites by `renderKey = sprite.id`. Re-showing the same character updates the existing node; enter/leave hooks only fire for genuine add/remove.
-- **Speaker display** uses `displayedSpeaker` (from `useDialogueReveal`), not a direct computed from the current frame. Has a three-way transition model (appear/disappear/change).
-- **`beginReveal()` is called by the phase FSM** — do not call it directly from other code.
-- **`isBusy`** is `computed(() => phase.value === 'scene')`. Gates transport controls. Never set `phase.value` directly — the FSM manages all transitions.
-- **`autoPlayDelayMs`** in settings schema is a dead field — not read anywhere. Do not wire new code to it. Use `autoAdvanceDelayMs` instead.
-- **`hudHideScope`** controls when the HUD hides: `'scene-only'` (default) hides during scene crossfades; `'all-motion'` hides during any bus activity. `hudShowInProgress` blocks `scene → reveal` until the HUD show animation completes.
-- **`pendingFrameTarget { kind: 'last' }`** uses `Number.MAX_SAFE_INTEGER` as a sentinel; the `watch(frames)` handler clamps it.
-- **Camera presentation** (`backgroundCameraStyle`, `spriteCameraStyle`, `spriteStyle`, `cameraAnimationClass`) reads from `displayedCamera`/`displayedCameraAnimations`, not `currentFrame`. Camera transitions are inline (`resolvedCameraTransitionMs`) and zeroed during `isSceneTransitioning`.
-- **Fallback timeouts** — CSS transition trackers set `cameraTransitionMs + 50` ms fallbacks in case `transitionend` never fires. Sprite enter WAAPI animations also set a 3s fallback if `<SmartImage>` never resolves.
-- **SmartImage swap blockers have fallback cleanup.** Swap blockers are de-duped per sprite/background key and auto-cleaned via timeout (`swapDurationMs + 75ms` buffer) even if the element unmounts mid-swap. Cleanup is also run on scope dispose. Swaps that begin after `phase !== 'scene'` are ignored to avoid hiding HUD mid-reveal.
-- **DOM Update Race Conditions** — Changing refs like `displayedSprites` triggers asynchronous Vue DOM patches. To prevent the Phase FSM from advancing to `reveal` *before* Vue calls `<TransitionGroup>` hooks, `applyFrame` holds a temporary `bus.register` lock and releases it in `nextTick`.
-- **Sprite lazy loading and WAAPI** — In `onSpriteEnter`, WAAPI animations must wait for `<SmartImage>` to emit `@resolved` (via `triggerSpriteEnterAnimation`), otherwise the fade runs on a blank unpainted shell. But `bus.register()` must still happen synchronously upfront to block the FSM while the image loads.
-- **Camera shake vs sprite shake.** Camera shake (scene-layer keyframes) is bus-tracked via a fixed 450ms timeout. Sprite shake/bounce/pulse are NOT tracked and do not block reveal (by design).
+- **`flush()` is read AND clear.** Returns snapshot AND clears `pendingCameraAnimations` AND `sprite.animations` on every sprite. Don't call just for the side effect.
+- **`isMessagePlayable`** checks `commands.length > 0`, not `source !== 'none'`. A message with only unparseable lines returns `source:'message'` but is **not** playable and won't appear in the index.
+- **Normalization scale locks on first `SmartImage` resolution.** Hot-swapping a character's asset set after initial load won't update the scale.
+- **`beginReveal()` is called by the phase FSM only** — do not call from other code.
+- **`autoPlayDelayMs`** in settings is a dead field. Use `autoAdvanceDelayMs`.
+- **`cancelAllEffects()`** is the nuclear teardown (backward nav, `jumpToSafeFrameBefore`). Calls `resetToScene`, `clearReveal`, `clearTransitionTimeouts`, `clearSpriteVisibilityTransitions`, resets `isSceneTransitioning`. Do **not** use for same-message frame transitions — `resetToScene` alone suffices.
+- **Sprite WAAPI enter** must wait for `<SmartImage>` `@resolved` to start the animation, but `bus.register()` must happen synchronously upfront (before the image loads) to hold the FSM.
+- **`ensurePlayerHost()`** must be re-called on `CHAT_CHANGED`.
+- **`prevFrameForDiff`** must not derive from displayed state — displayed state can be temporarily cleared at scene crossfade midpoint, which would break swap duration diffs.
+- **`{{vn_state}}` macro** (`status-macro.ts`) replays history on every expansion. For `swipe`/`regenerate` generation types it excludes the last message (the one being replaced).
 
 ---
 
