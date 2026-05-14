@@ -20,7 +20,7 @@
         class="renpy-player__background"
         :candidates="controller.scene.displayedBackground.candidates"
         :alt="controller.scene.displayedBackground.description"
-        :resample-target-height="controller.scene.spriteResampleTargetHeight"
+        :resample-target-height="controller.scene.backgroundResampleTargetHeight"
         @resolution-status="controller.diagnostics.onAssetResolutionStatus('__background__', $event)"
         @swap-start="controller.scene.onSmartImageSwapStart('__background__', $event)"
       />
@@ -54,7 +54,7 @@
             :candidates="sprite.asset?.candidates ?? []"
             :alt="sprite.asset?.description ?? sprite.id"
             :swap-duration-ms="sprite.swapDurationMs"
-            :resample-target-height="controller.scene.spriteResampleTargetHeight"
+            :resample-target-height="Math.round(controller.scene.spriteBaseResampleTargetHeight * sprite.normalizeScale)"
             @resolved="controller.scene.onSpriteResolved(sprite.id, $event)"
             @resolution-status="controller.diagnostics.onAssetResolutionStatus(sprite.id, $event)"
             @swap-start="controller.scene.onSmartImageSwapStart(sprite.id, $event)"

@@ -652,19 +652,18 @@ export function useRenpyPlayerController() {
 
   // ─── Stage geometry & presentation ─────────────────────────────────────────
 
-  /**
-   * Целевая высота для Pica Lanczos3 downsampling спрайтов.
-   * stageHeight × maxZoom × 1.25 — запас под zoom + 25% на качество.
-   * SmartImage применяет ресемплинг только если naturalHeight > resampleTargetHeight * 1.5.
-   */
-  const spriteResampleTargetHeight = computed(() => {
-    const maxZoom = Math.max(
-      settings.value.defaultSpriteScale,
-      settings.value.mediumSpriteScale,
-      settings.value.closeupSpriteScale,
-      1,
-    );
-    return Math.round(settings.value.stageHeight * maxZoom * 1.25);
+  const resampleDpr = computed(() => (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1));
+
+  const targetCameraPreset = computed(() =>
+    resolveActiveCameraPreset(currentFrame.value?.camera),
+  );
+
+  const backgroundResampleTargetHeight = computed(() => {
+    return Math.round(settings.value.stageHeight * targetCameraPreset.value.backgroundScale * resampleDpr.value);
+  });
+
+  const spriteBaseResampleTargetHeight = computed(() => {
+    return settings.value.stageHeight * targetCameraPreset.value.spriteScale * resampleDpr.value;
   });
 
   function clampNumber(value: number, min: number, max: number): number {
@@ -1579,7 +1578,8 @@ export function useRenpyPlayerController() {
       setSpriteCameraElement,
       trackSpritePositionTransitions,
       onSmartImageSwapStart,
-      spriteResampleTargetHeight,
+      backgroundResampleTargetHeight,
+      spriteBaseResampleTargetHeight,
     },
 
     dialogue: {

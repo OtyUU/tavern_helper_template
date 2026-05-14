@@ -108,7 +108,7 @@
     translateY(var(--sprite-y)) scale(calc(var(--sprite-scale) * var(--sprite-normalize-scale)));
   transform-origin: center center;
   transition: transform var(--renpy-camera-transition-ms) ease;
-  will-change: transform;
+  /* will-change removed to prevent low-res rasterization in Chrome */
 }
 
 /* SmartImage root element has class "smart-image" + "renpy-player__sprite".
@@ -123,8 +123,7 @@
   height: 100%;
   object-fit: contain;
   object-position: center bottom;
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
+  /* backface-visibility removed to prevent low-res rasterization in Chrome */
 }
 
 /* SmartImage previous layer uses position:absolute; inset:0 by default, which would force width stretching.
