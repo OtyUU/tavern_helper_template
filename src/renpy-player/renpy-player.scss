@@ -114,7 +114,10 @@
   align-items: flex-end;
   justify-content: center;
   transform-origin: center center;
-  transition: transform var(--renpy-camera-transition-ms) ease;
+}
+
+.renpy-player__sprite-motion--animating {
+  will-change: transform;
 }
 
 .renpy-player__sprite-pulse,

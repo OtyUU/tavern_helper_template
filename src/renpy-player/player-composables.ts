@@ -394,14 +394,38 @@ export function useScenePresentation(
   const prevSpriteTransform = ref('none');
   const activeCameraAnimationTrackers = new WeakMap<HTMLElement, Map<string, () => void>>();
 
+  const prevSpriteMotionTransformById = new Map<string, string>();
+  const activeSpriteMotionEls = new Set<HTMLElement>();
+
+  function syncPrevSpriteMotionTransforms(spriteMotionEls: HTMLElement[]): void {
+    prevSpriteMotionTransformById.clear();
+    for (const el of spriteMotionEls) {
+      const id = el?.dataset.spriteId;
+      if (!id) continue;
+      prevSpriteMotionTransformById.set(id, el.style.transform || 'none');
+    }
+  }
+
   watch(displayedSprites, (_nextSprites, previousSprites) => {
     previousDisplayedSprites.value = previousSprites ?? [];
   });
 
-  watch([() => prefersReducedMotion.value, () => effectsDisabled.value], (reducedOrDisabled) => {
-    if (!reducedOrDisabled) return;
-    activeCameraAnimationTrackers.get(backgroundCameraElement.value!)?.get('transform')?.();
-    activeCameraAnimationTrackers.get(spriteCameraElement.value!)?.get('transform')?.();
+  watch([() => prefersReducedMotion.value, () => effectsDisabled.value], ([reduced, disabled]) => {
+    if (!reduced && !disabled) return;
+
+    if (backgroundCameraElement.value) {
+      activeCameraAnimationTrackers.get(backgroundCameraElement.value)?.get('transform')?.();
+    }
+
+    if (spriteCameraElement.value) {
+      activeCameraAnimationTrackers.get(spriteCameraElement.value)?.get('transform')?.();
+    }
+
+    for (const el of activeSpriteMotionEls) {
+      activeCameraAnimationTrackers.get(el)?.get('transform')?.();
+      el.classList.remove('renpy-player__sprite-motion--animating');
+    }
+    activeSpriteMotionEls.clear();
   });
 
   function clearTransitionTimeouts() {
@@ -688,81 +712,6 @@ export function useScenePresentation(
     return cleanup;
   }
 
-  function trackCssTransition(
-    element: HTMLElement,
-    propertyName: string,
-    durationMs: number,
-    _label?: string,
-  ): void {
-    if (durationMs <= 0) {
-      return;
-    }
-
-    let perProp = activeCameraAnimationTrackers.get(element);
-    if (!perProp) {
-      perProp = new Map<string, () => void>();
-      activeCameraAnimationTrackers.set(element, perProp);
-    }
-
-    perProp.get(propertyName)?.();
-
-    let finished = false;
-    let unregister: (() => void) | null = null;
-    let fallbackHandle: number | null = null;
-
-    const complete = () => {
-      if (finished) return;
-      finished = true;
-
-      if (fallbackHandle !== null) {
-        window.clearTimeout(fallbackHandle);
-        fallbackHandle = null;
-      }
-
-      if (unregister) {
-        unregister();
-        unregister = null;
-      }
-
-      element.removeEventListener('transitionend', onTransitionEnd);
-      element.removeEventListener('transitioncancel', onTransitionCancel);
-
-      const current = perProp?.get(propertyName);
-      if (current === complete) {
-        perProp?.delete(propertyName);
-        if (perProp && perProp.size === 0) {
-          activeCameraAnimationTrackers.delete(element);
-        }
-      }
-    };
-
-    const onTransitionEnd = (event: TransitionEvent) => {
-      if (event.target !== element) return;
-      if (event.propertyName !== propertyName) return;
-      complete();
-    };
-
-    const onTransitionCancel = (event: TransitionEvent) => {
-      if (event.target !== element) return;
-      if (event.propertyName !== propertyName) return;
-      complete();
-    };
-
-    perProp.set(propertyName, complete);
-
-    unregister = bus.register(() => {
-      complete();
-    });
-
-    element.addEventListener('transitionend', onTransitionEnd, { once: false });
-    element.addEventListener('transitioncancel', onTransitionCancel, { once: false });
-
-    const fallbackMs = durationMs + 50;
-    fallbackHandle = window.setTimeout(() => {
-      complete();
-    }, fallbackMs);
-  }
-  
   function setBackgroundCameraElement(element: HTMLElement | null): void {
     backgroundCameraElement.value = element;
   }
@@ -771,40 +720,46 @@ export function useScenePresentation(
     spriteCameraElement.value = element;
   }
   
-  /** Track CSS transform transitions on sprites whose position changed. */
-  function trackSpritePositionTransitions(spriteShells: HTMLElement[]): void {
-    // Skip if effects disabled or reduced motion
-    if (effectsDisabled.value || prefersReducedMotion.value) {
+  function trackSpritePositionTransitions(spriteMotionEls: HTMLElement[]): void {
+    if (!spriteMotionEls || spriteMotionEls.length === 0) return;
+
+    const durationMs =
+      effectsDisabled.value ||
+      prefersReducedMotion.value ||
+      isSceneTransitioning.value ||
+      cameraTransitionMs.value <= 0
+        ? 0
+        : cameraTransitionMs.value;
+
+    if (durationMs <= 0 || prevSpriteMotionTransformById.size === 0) {
+      syncPrevSpriteMotionTransforms(spriteMotionEls);
       return;
     }
-    
-    if (cameraTransitionMs.value <= 0) {
-      return;
+
+    for (const el of spriteMotionEls) {
+      const id = el?.dataset.spriteId;
+      if (!id) continue;
+
+      const to = el.style.transform || 'none';
+      const from = prevSpriteMotionTransformById.get(id) ?? to;
+
+      if (from === to) continue;
+
+      el.classList.add('renpy-player__sprite-motion--animating');
+      activeSpriteMotionEls.add(el);
+
+      let deregister = () => {};
+      const onDone = () => {
+        deregister();
+        el.classList.remove('renpy-player__sprite-motion--animating');
+        activeSpriteMotionEls.delete(el);
+      };
+
+      const cleanup = animateCameraLayerWAAPI(el, from, to, durationMs, onDone);
+      deregister = bus.register(cleanup);
     }
-    
-    // Get current sprite positions to compare
-    const currentSprites = displayedSprites.value ?? [];
-    const previousSprites = previousDisplayedSprites.value ?? [];
-    
-    // Only track sprites that exist in both current and previous (position changes, not enter/leave)
-    const spritesToTrack = currentSprites.filter(current => {
-      const previous = previousSprites.find(p => p.id === current.id);
-      // Only track if sprite existed before AND position changed
-      return previous && previous.position !== current.position;
-    });
-    
-    if (spritesToTrack.length === 0) {
-      return;
-    }
-    
-    spritesToTrack.forEach(sprite => {
-      const shell = spriteShells.find(el => el?.dataset.spriteId === sprite.id);
-      if (!shell) {
-        return;
-      }
-      
-      trackCssTransition(shell, 'transform', cameraTransitionMs.value, `sprite transform (${sprite.id})`);
-    });
+
+    syncPrevSpriteMotionTransforms(spriteMotionEls);
   }
 
   return {

@@ -84,7 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRenpyPlayer } from './player-context';
 import SmartImage from './SmartImage.vue';
 
@@ -97,12 +97,15 @@ const spriteMotionRefs = ref<HTMLElement[]>([]);
 onMounted(() => {
   controller.scene.setBackgroundCameraElement(bgCameraRef.value);
   controller.scene.setSpriteCameraElement(spriteCameraRef.value);
+
+  nextTick(() => {
+    controller.scene.trackSpritePositionTransitions(spriteMotionRefs.value);
+  });
 });
 
 watch(
-  () => controller.scene.renderedSprites.map(s => `${s.id}:${s.position}`).join('|'),
+  () => controller.scene.renderedSprites.map(s => `${s.id}:${s.motionStyle?.transform ?? ''}`).join('|'),
   (signature, prevSignature) => {
-    if (!prevSignature) return;
     if (signature === prevSignature) return;
     controller.scene.trackSpritePositionTransitions(spriteMotionRefs.value);
   },
