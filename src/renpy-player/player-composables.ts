@@ -393,6 +393,7 @@ export function useScenePresentation(
   const prevBackgroundTransform = ref('none');
   const prevSpriteTransform = ref('none');
   const activeCameraAnimationTrackers = new WeakMap<HTMLElement, Map<string, () => void>>();
+  const sharedTransformStartTime = ref<number | null>(null);
 
   const prevSpriteMotionTransformById = new Map<string, string>();
   const activeSpriteMotionEls = new Set<HTMLElement>();
@@ -590,6 +591,14 @@ export function useScenePresentation(
       const bgEl2 = backgroundCameraElement.value;
       const spriteEl2 = spriteCameraElement.value;
 
+      const sharedStartTime =
+        (document.timeline?.currentTime ?? null) as number | null;
+
+      sharedTransformStartTime.value = sharedStartTime;
+      queueMicrotask(() => {
+        sharedTransformStartTime.value = null;
+      });
+
       const toBg = bgEl2?.style.transform || 'none';
       const toSprite = spriteEl2?.style.transform || 'none';
 
@@ -610,7 +619,9 @@ export function useScenePresentation(
 
         waapiCleanup = animateCameraLayerWAAPI(el, from, to, cameraTransitionMs.value, () => {
           deregister();
-        });
+        },
+        sharedStartTime,
+      );
       };
 
       if (bgEl2 && fromBg !== null && toBg !== null) {
@@ -639,7 +650,9 @@ export function useScenePresentation(
    *   - If `fromTransform === toTransform` or `durationMs <= 0`, `onDone` is
    *     called synchronously and no animation is created.
    *   - Otherwise a WAAPI animation is created with `ease` easing and
-   *     `fill: 'none'` so Vue retains ownership of the inline `style.transform`.
+     *     `fill: 'both'` so the animation holds its from/to state around its
+     *     active phase (cleanup always `cancel()`s, reverting to Vue's inline
+     *     `style.transform`).
    *   - Any previous animation tracked on the same element for `'transform'` is
    *     cancelled before the new one starts.
    *   - `onDone` is called exactly once: on finish, cancel, early-return, or
@@ -653,6 +666,7 @@ export function useScenePresentation(
     toTransform: string,
     durationMs: number,
     onDone?: () => void,
+    explicitStartTime?: number | null,
   ): () => void {
     if (durationMs <= 0) {
       onDone?.();
@@ -674,8 +688,19 @@ export function useScenePresentation(
 
     const animation = element.animate(
       [{ transform: fromTransform }, { transform: toTransform }],
-      { duration: durationMs, easing: 'ease', fill: 'none' },
+      { duration: durationMs, easing: 'ease', fill: 'both' },
     );
+
+    if (explicitStartTime != null) {
+      try {
+        animation.pause();
+        animation.startTime = explicitStartTime;
+        animation.currentTime = 0;
+        animation.play();
+      } catch {
+        // Firefox may reject startTime assignment; keep the animation running.
+      }
+    }
 
     let finished = false;
     let fallbackHandle: number | null = null;
@@ -755,7 +780,14 @@ export function useScenePresentation(
         activeSpriteMotionEls.delete(el);
       };
 
-      const cleanup = animateCameraLayerWAAPI(el, from, to, durationMs, onDone);
+      const cleanup = animateCameraLayerWAAPI(
+        el,
+        from,
+        to,
+        durationMs,
+        onDone,
+        sharedTransformStartTime.value,
+      );
       deregister = bus.register(cleanup);
     }
 
